@@ -1,5 +1,5 @@
 import { chromium } from "@playwright/test";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export function loopbackOrigin(value: string): string {
@@ -15,7 +15,7 @@ export async function compareSites(options: { web: string; astro: string; paths:
   const web = loopbackOrigin(options.web);
   const astro = loopbackOrigin(options.astro);
   if (options.paths.some((path) => !path.startsWith("/") || path.startsWith("//"))) throw new Error("Comparison paths must be internal paths.");
-  const context = await chromium.launchPersistentContext(resolve(scratch, "parity-browser"), {
+  const context = await chromium.launchPersistentContext(mkdtempSync(resolve(scratch, "parity-browser-")), {
     headless: true, viewport: { width: 1440, height: 1000 }, locale: "en-US", serviceWorkers: "block",
   });
   const results: { path: string; viewport: string; differences: string[]; web: unknown; astro: unknown }[] = [];

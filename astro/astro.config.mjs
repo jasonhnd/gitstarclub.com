@@ -1,6 +1,6 @@
 import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { rankingImages } from "./src/packages/p1/image-build.mjs";
@@ -16,6 +16,7 @@ const hostMode = process.env.GSC_HOST_MODE ?? "pre";
 if (!["pre", "production"].includes(hostMode)) throw new Error("Select explicit mode pre or production.");
 const exportRoot = fileURLToPath(new URL("../web/public/data/exports/v1/", import.meta.url));
 const exportDate = readdirSync(exportRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name)).map((entry) => entry.name).sort().at(-1) ?? null;
+const exportManifest = exportDate ? JSON.parse(readFileSync(resolve(exportRoot, exportDate, "manifest.json"), "utf8")) : null;
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const identityPlugin = {
   name: "astro-build-identity",
@@ -51,6 +52,7 @@ export default defineConfig({
       __GSC_ASTRO_BUILD__: JSON.stringify(commit),
       __GSC_ASTRO_MODE__: JSON.stringify(hostMode),
       __GSC_ASTRO_EXPORT_DATE__: JSON.stringify(exportDate),
+      __GSC_EXPORT_MANIFEST__: JSON.stringify(exportManifest),
       "process.env.SITE_INDEXABLE": JSON.stringify(hostMode === "production" ? "1" : "0"),
     },
     cacheDir: resolve(scratch, "astro-vite"),

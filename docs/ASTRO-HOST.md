@@ -70,6 +70,12 @@ The built-entry regression test intercepts those authenticated GETs at a local
 synthetic HTTP server, including Cloudflare numeric Sunday aliases and failure
 propagation. It never invokes a deployed operational endpoint.
 
+Release lists (`/releases`) and details (`/releases/<id>`) in all seven locales
+bypass the shared HTML page cache (`x-gsc-cache: BYPASS`). This keeps a newly
+appended history record visible within the 60-second contract in
+[DATA-CONTRACTS.md §2.11b](DATA-CONTRACTS.md). Other
+routes retain their existing cache policy.
+
 KV is the persistent key/value page cache. DATA is the native R2 data binding;
 MEDIA stays the shared asset bucket. JOBS is the refresh task queue.
 `WORKER_SELF_REFERENCE` keeps step calls inside the same Worker.

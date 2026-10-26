@@ -5,7 +5,7 @@ import { Star } from "../../../web/app/_explore/Star";
 import LanguageSwitcher from "./LanguageSwitcher.astro";
 interface Props { locale: Locale; canonicalPath: string; dictionary: Dict; asOf?: string | null }
 const { locale, canonicalPath, dictionary: t, asOf } = Astro.props;
-const links = [["/pulse", t.nav.pulse], ["/rankings", t.nav.rankings], ["/categories", t.nav.categories], ["/o", t.nav.organizations], ["/about", t.nav.about], ["/privacy", t.footer.privacy]];
+const links = [["/pulse", t.nav.pulse], ["/rankings", t.nav.rankings], ["/categories", t.nav.categories], ["/o", t.nav.organizations], ["/about", t.nav.about], ["/releases", t.footer.releases], ["/privacy", t.footer.privacy]];
 ---
 <footer class="mt-auto border-t border-outline-variant py-8 px-[clamp(1.25rem,5vw,2.5rem)]">
   <div class="mx-auto flex w-full max-w-[68rem] flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

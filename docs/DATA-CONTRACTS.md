@@ -1,7 +1,7 @@
 ---
 owner: data contracts
 status: active
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-26
 source_of_truth_for:
   - canonical JSON shard schemas
   - JSON view schemas
@@ -606,6 +606,87 @@ The one-shot `pipeline/backfill` does not directly overwrite any live views / ca
 - A canonical read checks `bootstrap/overlays/<generation>/canonical/**` first, and falls back to the sealed generation when the object does not exist; a canonical writer writes only the overlay and does not overwrite the generation. `previous_generation` therefore restores both the old seed and its overlay.
 - A resume of the same generation must be byte-identical; if validation / upload / the active lease fails, the pointer is unchanged. A generation rollback rechecks the sealed target before the lease, then rereads the pointer inside the lease; a legacy rollback's target validation must finish inside the lease.
 
+### 2.11b `views/releases.json` — public managed-refresh history
+
+The shared publisher in `web/lib/workflows` writes this public key beside
+`views/latest.json`. Both web and Astro use that publisher and the same
+`ReleaseRecord` / `Releases` Zod contracts in `web/lib/contracts/releases.ts`.
+Consumers resolve the key directly against the configured public data origin,
+for example `https://data-pre.gitstarclub.com/views/releases.json` in preview.
+It is not a version-relative view. The Astro host reads this key for `/releases`
+and `/releases/<id>` (and the same paths under each non-default locale). No
+other host configuration change is required.
+
+```json
+{
+  "schema_ver": 1,
+  "releases": [
+    {
+      "id": "refresh-2026-10-25T11-36-27-410Z",
+      "published_at": "2026-10-25T13:01:02.673Z",
+      "prev_version": "refresh-2026-10-21T21-01-25-223Z",
+      "tracked_repo_count": 5687,
+      "skipped_repo_count": 0,
+      "data_as_of": {
+        "seam_date": "2026-10-21",
+        "generated_at": "2026-10-25T12:42:09.205Z",
+        "folded_through": { "month": "2026-09", "week": "2026-W40" }
+      }
+    }
+  ]
+}
+```
+
+- `schema_ver` is exactly `1`. The envelope, records and layer dates reject
+  unknown fields. Record ids are unique, counts are nonnegative integers, and
+  dates use the shared timestamp/date/period validators.
+- `id` is the managed refresh run id and published version. `published_at` and
+  nullable `prev_version` come from the immutable publication intent, preserving
+  the original values across retries. Rollbacks and daily/weekly live refreshes
+  do not append managed refresh records. Older releases are not backfilled.
+- `tracked_repo_count` is that version's `meta.active_repo_count`: active
+  published repositories, including retained values for skipped existing repos,
+  excluding historical inactive rows and missing newcomers with no published
+  value. It is not the whitelist discovery count.
+- `skipped_repo_count` sums the `skipped` array lengths in all 32 completed
+  `ops/workflows/<run_id>/metadata-<bucket>.json` ledgers, including retained and
+  missing repositories. Every ledger must exist and explicitly include an empty
+  pending queue and a skipped array. Missing, incomplete or mismatched ledgers
+  fail preparation; absence is not zero. The runtime summary also sums completed
+  bucket `skipped_count` (falling back to `skipped.length`) once, excluding retry
+  hops. Borrowed metadata is materialized under the current run before publish.
+- `data_as_of` copies all layer dates available in `views/<run_id>/meta.json`:
+  required `seam_date`, optional `generated_at`, optional `backfilled_at`, and
+  optional `folded_through` month/week. The seam separates gross and net history;
+  generation and bootstrap timestamps describe their own artifacts; folded
+  periods describe completed historical layers. These are not interchangeable
+  collection dates or evidence of complete history. Unavailable optional fields
+  are omitted, never replaced by publication time. This record does not describe
+  the independently published live overlay or packaged exports.
+- Version metadata and all 32 ledgers are read directly from the write store's
+  origin and validated before switching `views/latest.json`; public reads are
+  never used for these release inputs. Append happens after that switch and
+  successful recovery, whitelist, invalidation and
+  notification calls. A failed pointer publication never appends. The two
+  objects are not a storage transaction: an append failure after the switch is
+  a post-commit error with `failed_step: "releases"`. Retrying the same publish
+  repairs it; readers may temporarily see a pointer before its history entry.
+  A successful append whose response is lost is also repaired by idempotent
+  retry. A lost ownership lease inside the append remains non-retryable and
+  records `failed_step: "releases"`. Later notification pages or run cleanup can
+  fail after a release has committed; that does not erase its record.
+- Append reads use the storage origin. Writes require the workflow ownership
+  lease and an ETag conditional write (the stored object's revision must still
+  match). Conflicts reread and retry up to five times. An existing id is a no-op:
+  its original record is never modified. Malformed history or read errors fail
+  closed instead of replacing history with an empty list.
+- Retention is **100 newest records**, ordered by publication timestamp
+  descending with id as the tie-breaker. Retained records are append-only and
+  immutable; only overflow evicts the oldest. If the new id would fall outside
+  retention, append fails before writing. Neither this rolling index nor
+  referenced version objects promise permanent retention. The public history
+  uses a 60-second cache lifetime.
+
 ### 2.12 `ops/workflows/{run_id}/manifest.json` + `steps/{step}.json` — Workflow checkpoint
 
 A business-readable run-progress ledger (the orchestration runtime advances it with a Queue / HTTP chain; it no longer depends on Workflow SDK persistence).
@@ -621,7 +702,7 @@ A business-readable run-progress ledger (the orchestration runtime advances it w
 }
 ```
 
-`status: "failed"` with a non-null `published_version` is a **post-commit failure**: `views/latest.json` already serves that version, and a later step did not finish. Its `error.json` carries `phase: "post_commit"`, `committed_version`, and `failed_step`. The publish steps are `recovery`, `whitelist_pointer`, `invalidate`, and `indexnow`, `ownership` (the lease check after the switch, including a lost lease; a lost lease cannot write the manifest, so it writes the create-only `ops/workflows/<run_id>/post-commit-failure.json` `{ run_id, started_at, status: "failed", phase: "post_commit", published_version, failed_step: "ownership", error, at }` and renews, releases, and overwrites nothing), plus `invalidate` (target check), `whitelist_snapshot`, and `pointer` when a replay or a lost pointer-write response found the pointer already switched. The runtime steps after publish are `gc` and `markPublished`. When one of those three checked steps fails and `views/latest.json` cannot be read, the run writes `phase: "commit_unknown"` with `candidate_version` and `failed_step`, and keeps `published_version: null`. A failure before the switch keeps `published_version: null` and writes `phase: "pre_commit"`. Publish resolves the cache-invalidation target before the switch, so a missing origin is `pre_commit`. `error.json` is `{ run_id, error, at, phase, committed_version? | candidate_version?, failed_step? }`; `error` is sanitized.
+`status: "failed"` with a non-null `published_version` is a **post-commit failure**: `views/latest.json` already serves that version, and a later step did not finish. Its `error.json` carries `phase: "post_commit"`, `committed_version`, and `failed_step`. The publish steps are `recovery`, `whitelist_pointer`, `invalidate`, `indexnow`, `releases` (public history append or release preparation on replay), and `ownership` (the lease check after the switch, including a lost lease; a lost lease cannot write the manifest, so it writes the create-only `ops/workflows/<run_id>/post-commit-failure.json` `{ run_id, started_at, status: "failed", phase: "post_commit", published_version, failed_step: "ownership" | "releases", error, at }` with `releases` for a lease lost inside the history append, and renews, releases, and overwrites nothing), plus `invalidate` (target check), `whitelist_snapshot`, and `pointer` when a replay or a lost pointer-write response found the pointer already switched. The runtime steps after publish are `gc` and `markPublished`. When one of those three checked steps fails and `views/latest.json` cannot be read, the run writes `phase: "commit_unknown"` with `candidate_version` and `failed_step`, and keeps `published_version: null`. A failure before the switch keeps `published_version: null` and writes `phase: "pre_commit"`. Publish resolves the cache-invalidation target before the switch, so a missing origin is `pre_commit`. `error.json` is `{ run_id, error, at, phase, committed_version? | candidate_version?, failed_step? }`; `error` is sanitized.
 
 > `steps[]` is the **manifest grouping** (10 items, corresponding to the progress ledger, including the read-only `preflight` and the real `buildAliases` phase); the **fine-grained 13 steps** (preflight/whitelist/rename/metadata/fold/rank/repo-entities/org-entities/heatmap/aliases/validate/publish/gc) are in [VERCEL-DATA-OPERATIONS.md](./VERCEL-DATA-OPERATIONS.md) §4. The orchestration runtime also writes `ops/workflows/<run_id>/steps/<step>.json`; metadata also writes a mutable `metadata-<bucket>.json` (GraphQL batch progress; a 502 continues the same hop); `validate` also writes `canonical-manifest.json` (the path, bucket, record count, SHA-256, and integrity conclusion of every required canonical shard) and `validation.json`, and the other run-level ledgers include manifest / error / latest-success / `latest-unpublished-whitelist.json`.
 
@@ -785,3 +866,25 @@ or authorizes widening the gap. No monthly arithmetic is changed.
 The reader note describes stars still present at collection time and GitHub's
 approximately UTC day boundaries, which may differ by a few hours. It does not
 claim exact UTC reconstruction, historical net growth or a live count.
+
+### Public release detail pages
+
+Astro serves retained records at `/releases/<id>` and the corresponding six
+non-English locale paths. The About this data release link uses this same path.
+The page reads the global `views/releases.json`, not a version-prefixed history.
+An absent or empty history, or an unknown/unretained id, returns HTTP 404.
+Invalid history fails closed rather than presenting invented release values.
+
+Publication timestamps are displayed in UTC. Missing optional layer dates are
+labelled as not recorded; monthly and weekly cutoffs preserve the stored periods.
+The previous-version link preserves the current locale; it may return 404 if that
+version predates the public history or has fallen outside retention.
+
+Raw public links use the configured `R2_PUBLIC_BASE_URL`. Only existing, valid
+records are linked: version metadata, the current published pointer, the latest
+successful publication and refresh health. Mutable pointers must identify the
+requested run; health must identify it in the current, last-success or
+last-failure signal. These documents describe their current state, not immutable
+historical copies. Optional records that are missing or unreadable are omitted.
+There is no storage listing, operational intent link, network search or client
+fetch to build the detail page.

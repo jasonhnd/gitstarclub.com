@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { chromium } from "@playwright/test";
 import { resolve } from "node:path";
+import { mkdtempSync } from "node:fs";
 import { samplePage, scriptSize } from "../scripts/perf-metrics";
 
 test("browser collector includes dynamic imports and executable inline JS once, rejects missing scripts", async () => {
@@ -13,7 +14,7 @@ test("browser collector includes dynamic imports and executable inline JS once, 
     if (path.endsWith(".js")) return new Response(path === "/entry.js" ? module : shared, { status: broken ? 404 : 200, headers: { "content-type": "text/javascript" } });
     return new Response(`<html><head><script type="application/ld+json">{"name":"excluded"}</script><script>${inline}</script><script type="module" src="/entry.js"></script></head><body><main><h1>Paint probe</h1><astro-island client="load" component-url="/entry.js"></astro-island></main></body></html>`, { headers: { "content-type": "text/html" } });
   } });
-  const profile = await chromium.launchPersistentContext(resolve(process.env.KANBAN_TMP!, "perf-test-browser"), { headless: true });
+  const profile = await chromium.launchPersistentContext(mkdtempSync(resolve(process.env.KANBAN_TMP!, "perf-test-browser-")), { headless: true });
   try {
     const result = await samplePage(profile.browser()!, fixture.url.origin, "/");
     const expected = [scriptSize("/entry.js", new TextEncoder().encode(module)), scriptSize("/shared.js", new TextEncoder().encode(shared)), scriptSize("inline:0", new TextEncoder().encode(inline))];

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
@@ -17,7 +18,7 @@ import { CATEGORY_DIMENSIONS, type CategoryDimension } from "@/lib/categories/ru
 import type { CategoryDimensionRegistry, CategoryRegistry } from "@/lib/contracts";
 import { getCategoryAllTimePage, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
 import { formatInteger } from "@/lib/format";
-import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
+import { resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
@@ -28,6 +29,8 @@ import {
   categoryDetailPagePath,
   isThinCategoryCount,
   relatedPublicCategories,
+  categoryCatalogAsOf,
+  categoryDetailAsOf,
   categoryPath,
   fallbackRegistry,
   findCategory,
@@ -188,7 +191,7 @@ export async function generateCategoryDetailMetadataForLocale(locale: Locale, pa
   });
 }
 
-export async function CategoriesPageView({ locale }: { locale: Locale }) {
+export async function CategoriesPageView({ locale, aboutThisData }: { locale: Locale; aboutThisData?: ReactNode }) {
   const t = await getDictionary(locale);
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
@@ -205,7 +208,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
     dimension: localizedDimensionLabel(locale, category.dimension),
     path: href(categoryPath(category.dimension, category.slug)),
   }));
-  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = categoryCatalogAsOf(registry, meta, locale);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
     name: text.categoryIndexDatasetName,
@@ -251,6 +254,8 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
+        {aboutThisData}
+
         <section className="mt-[clamp(2.5rem,5vw,4rem)]">
           <SectionIntro title={text.categorySummaryCaption} description={text.categoryIndexDatasetDescription} />
           {categoryRows.length > 0 ? (
@@ -293,7 +298,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
   );
 }
 
-export async function CategoryDimensionPageView({ locale, dimension }: { locale: Locale; dimension: string }) {
+export async function CategoryDimensionPageView({ locale, dimension, aboutThisData }: { locale: Locale; dimension: string; aboutThisData?: ReactNode }) {
   if (!isCategoryDimension(dimension)) notFound();
 
   const t = await getDictionary(locale);
@@ -313,7 +318,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
   const href = (path: string) => localizedPath(locale, path);
   const categories = entry.categories.filter((category) => category.public);
   const categoryRows = categories.map((category) => ({ ...category, dimension: entryLabel, path: href(categoryPath(category.dimension, category.slug)) }));
-  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = categoryCatalogAsOf(registry, meta, locale);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
     name: fill(text.categoryDimensionDatasetName, { label: entryLabel }),
@@ -361,6 +366,8 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.5rem,3vw,2.25rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
+        {aboutThisData}
+
         <section className="mt-[clamp(2.5rem,5vw,4rem)]">
           <SectionIntro title={fill(text.categoryDimensionSummaryCaption, { label: entryLabel })} description={fill(text.categoryLinksA, { label: entryLabel })} />
           {categoryRows.length > 0 ? (
@@ -382,7 +389,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
   );
 }
 
-export async function CategoryDetailPageView({ locale, dimension, slug, page }: { locale: Locale; dimension: string; slug: string; page: number }) {
+export async function CategoryDetailPageView({ locale, dimension, slug, page, aboutThisData }: { locale: Locale; dimension: string; slug: string; page: number; aboutThisData?: ReactNode }) {
   if (page < 1) notFound();
 
   const t = await getDictionary(locale);
@@ -415,7 +422,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   const siblingCategories = relatedPublicCategories(dimensionEntry?.categories ?? [], category.id);
   const thin = isThinCategoryCount(category.count);
   const dimensionLabel = localizedDimensionLabel(locale, dimension, dimensionEntry?.label ?? dimension);
-  const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = categoryDetailAsOf(rank?.meta.generated_at, registry, meta, locale);
   const pagePath = categoryDetailPagePath(dimension, slug, page);
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
@@ -490,6 +497,8 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
         />
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.75rem,4vw,3rem)]" labels={answerCapsuleLabels(locale, t)} />}
+
+        {aboutThisData}
 
         <section id="category-ranking" className="mt-[clamp(2.5rem,5vw,4rem)] scroll-mt-24">
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">

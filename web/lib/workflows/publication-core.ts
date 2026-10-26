@@ -3,6 +3,7 @@ import {
   PublishIntent,
   PublishedWhitelist,
   ViewsPointer,
+  type ReleaseRecord,
   type PublishIntent as PublishIntentType,
   type PublishedWhitelist as PublishedWhitelistType,
   type ViewsPointer as ViewsPointerType,
@@ -28,7 +29,7 @@ export type PublicationOwner = {
  * the pointer write they count as post-commit only on a replay, when an
  * earlier attempt may already have switched the pointer.
  */
-export type PublicationCommitCheckStep = "invalidate" | "whitelist_snapshot" | "pointer";
+export type PublicationCommitCheckStep = "invalidate" | "whitelist_snapshot" | "pointer" | "releases";
 
 /** Steps that can fail while `views/latest.json` already serves the intent's version. */
 export type PublicationPostCommitStep =
@@ -67,12 +68,13 @@ export class PublicationPostCommitError extends Error {
  */
 export class PublicationPostCommitLeaseLostError extends WorkflowLeaseOwnershipError {
   readonly version: string;
-  readonly step = "ownership" satisfies PublicationPostCommitStep;
+  readonly step: PublicationPostCommitStep;
 
-  constructor(version: string, cause: WorkflowLeaseOwnershipError) {
-    super(`version ${version} is live; post-commit ownership check failed: ${cause.message}`);
+  constructor(version: string, cause: WorkflowLeaseOwnershipError, step: PublicationPostCommitStep = "ownership") {
+    super(`version ${version} is live; post-commit ${step === "ownership" ? "ownership check" : step} failed: ${cause.message}`);
     this.name = "PublicationPostCommitLeaseLostError";
     this.version = version;
+    this.step = step;
     this.cause = cause;
   }
 }
@@ -105,6 +107,8 @@ export type PublicationDeps = {
   checkInvalidationTarget(): void;
   invalidate(): Promise<void>;
   notifyIndexNow(args: { runId: string; prevVersion: string | null; publishedAt: string }): Promise<unknown>;
+  prepareRelease(intent: PublishIntentType): Promise<ReleaseRecord>;
+  appendRelease(owner: PublicationOwner, record: ReleaseRecord): Promise<void>;
   now(): string;
 };
 
@@ -210,6 +214,7 @@ async function afterCommit(
   try {
     await run();
   } catch (error) {
+    if (error instanceof WorkflowLeaseOwnershipError) throw new PublicationPostCommitLeaseLostError(intent.version, error, step);
     throw new PublicationPostCommitError(intent.version, step, error);
   }
 }
@@ -261,6 +266,9 @@ async function applyIntent(
     run_id: intent.version,
     ids: whitelist.entries.map((entry) => entry.id),
   });
+  const release = intent.operation === "publish"
+    ? await beforeCommit(intent, deps, replay, "releases", () => deps.prepareRelease(intent))
+    : null;
 
   // Each write is deterministic and overwrite-idempotent. The live pointer is
   // the publication commit point; recovery and the compatibility whitelist
@@ -285,6 +293,10 @@ async function applyIntent(
       publishedAt: intent.published_at,
     }),
   );
+  if (release) {
+    await ensureOwnershipAfterCommit(owner, intent, deps);
+    await afterCommit(intent, "releases", () => deps.appendRelease(owner, release));
+  }
 
   return { version: intent.version, prev_version: intent.prev_version, published_at: intent.published_at };
 }

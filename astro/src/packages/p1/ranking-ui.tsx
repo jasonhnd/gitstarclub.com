@@ -15,9 +15,28 @@ import { availablePeriodLabel, isFallbackMonthPeriod, isFallbackWeekPeriod } fro
 import { repositoryTableLabels } from "@/app/_localized/routing";
 import { fill } from "@/app/_localized/detail-copy";
 import { RANKING_FEATURED_LIMIT, type NewcomerRow } from "@/app/_localized/ranking-page-data";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
+import { getMeta } from "@/lib/data";
+import { publicationScope } from "../../../../web/lib/workers-host/publication-fence";
 
 export type HeatmapCell = { label: string; gained: number; href?: string };
 export type PeriodNavLink = { href: string; label: string; eyebrow: string };
+export type RankingCitation = { pageTitle: string; canonicalUrl: string };
+
+/** Period-gains disclosure for the current captured publication. Await it in the page function; renderToStaticMarkup does not resolve async components. */
+export async function rankingAboutData({ locale, dictionary, pageTitle, canonicalUrl }: RankingCitation & { locale: Locale; dictionary: Dict }) {
+  return (
+    <AboutThisDataContent
+      locale={locale}
+      dictionary={dictionary}
+      meta={await getMeta()}
+      releaseId={publicationScope.getStore()?.views?.version ?? null}
+      layer="periodGains"
+      pageTitle={pageTitle}
+      canonicalUrl={canonicalUrl}
+    />
+  );
+}
 
 export function EmptyState({ message, className = "", variant = "overview" }: { message: string; className?: string; variant?: "overview" | "detail" }) {
   const shape = variant === "detail" ? "rounded-lg" : "mt-[clamp(1rem,2vw,1.5rem)] rounded-2xl";
@@ -104,6 +123,7 @@ export function AnswerBlock({
   labels,
   leaderLinksLabel,
   emptyMessage,
+  children,
 }: {
   capsule: Parameters<typeof AnswerCapsule>[0]["capsule"] | null;
   rows: Row[];
@@ -111,12 +131,14 @@ export function AnswerBlock({
   labels: Parameters<typeof AnswerCapsule>[0]["labels"];
   leaderLinksLabel: string;
   emptyMessage: string;
+  children?: ReactNode;
 }) {
-  if (!capsule) return null;
+  if (!capsule && !children) return null;
   return (
     <div className="mt-[clamp(1.75rem,4vw,3rem)]">
-      <AnswerCapsule capsule={capsule} labels={labels} />
-      <RankingLeaderLinks rows={rows.slice(0, RANKING_FEATURED_LIMIT)} locale={locale} ariaLabel={leaderLinksLabel} emptyMessage={emptyMessage} />
+      {capsule ? <AnswerCapsule capsule={capsule} labels={labels} /> : null}
+      {children}
+      {capsule ? <RankingLeaderLinks rows={rows.slice(0, RANKING_FEATURED_LIMIT)} locale={locale} ariaLabel={leaderLinksLabel} emptyMessage={emptyMessage} /> : null}
     </div>
   );
 }

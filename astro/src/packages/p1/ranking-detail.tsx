@@ -1,3 +1,6 @@
+import { RepairRemovalNotice } from "@/app/_explore/RepairRemovalNotice";
+import { repairRemovalNoticeText } from "@/lib/repair-removal-notice";
+import { SourceNote } from "@/app/_explore/SourceNote";
 import { notFound } from "../../lib/navigation";
 import { Breadcrumbs } from "@/app/_explore/Breadcrumbs";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
@@ -8,15 +11,16 @@ import { RelatedPages } from "@/app/_explore/RelatedPages";
 import { ShareableSnippet } from "./ShareableSnippet";
 import { PAD_X } from "@/app/_explore/layout-tokens";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
+import { countWithNoun } from "@/lib/i18n/plural";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { buildNarrative } from "@/lib/narrative";
 import { rankingRoutePeriod, rankingYear } from "@/lib/public-params";
 import { FIRST_YEAR } from "@/lib/periods";
 import { weeklyRankSourceNote } from "@/lib/star-history-provenance";
-import { fmtStars, formatInteger, monthLabel, monthYearLabel } from "@/lib/format";
+import { dateLabel, fmtStars, monthLabel, monthYearLabel } from "@/lib/format";
 import { RankingCategoryExits } from "@/app/_localized/ranking-category-exits";
-import { getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
-import { HeroActions, PeriodStats, AnswerBlock, MovementSection, RankingMetricGrid, CompleteRankingSection, PeriodNavigation, type PeriodNavLink } from "./ranking-ui";
+import { getCurrentMonth, getRank, getCategoryAssignmentsForRepos } from "@/lib/data";
+import { HeroActions, PeriodStats, AnswerBlock, MovementSection, RankingMetricGrid, CompleteRankingSection, PeriodNavigation, rankingAboutData, type PeriodNavLink, type RankingCitation } from "./ranking-ui";
 import { loadRankingDetailData, rankingDetailStructuredData, RANKING_FEATURED_LIMIT } from "@/app/_localized/ranking-page-data";
 import { resolveAdjacentRankPeriod, resolveAdjacentRankYear, resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import { isCloudflareWorkersHost } from "@/lib/runtime-config";
@@ -33,6 +37,7 @@ import {
   shareableSnippetLabels,
 } from "@/app/_localized/detail-copy";
 import { generateCoreLocaleStaticParams } from "@/app/_localized/routing";
+import { partialPeriodObservationStart } from "./period-observation";
 
 type YearParam = { year: string };
 type PeriodParam = { year: string; period: string };
@@ -89,7 +94,7 @@ export async function generateRankingPeriodMetadata(locale: Locale, params: Peri
   });
 }
 
-export async function RankingsYearPageView({ locale, year: yearValue, now = new Date() }: { locale: Locale; year: string; now?: Date }) {
+export async function RankingsYearPageView({ locale, year: yearValue, now = new Date(), pageTitle, canonicalUrl }: { locale: Locale; year: string; now?: Date } & RankingCitation) {
   const t = await getDictionary(locale);
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
@@ -118,11 +123,15 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const tableLabels = repositoryTableLabels(t);
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: rankRows, metric: "gained" }) : null;
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
-  const [previousYear, nextYear] = await Promise.all([resolveAdjacentRankYear(year, -1), resolveAdjacentRankYear(year, 1)]);
+  const [previousYear, nextYear, aboutData] = await Promise.all([
+    resolveAdjacentRankYear(year, -1),
+    resolveAdjacentRankYear(year, 1),
+    rankingAboutData({ locale, dictionary: t, pageTitle, canonicalUrl }),
+  ]);
   const previous = previousYear ? { href: href(previousYear.href), label: previousYear.label, eyebrow: t.common.previous } : null;
   const next = nextYear ? { href: href(nextYear.href), label: nextYear.label, eyebrow: t.common.next } : null;
 
-  return (
+  return { asOf, body: (
     <>
       {rankingDetailStructuredData({ locale, path: routePath, label: String(year), rows: rankRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -138,13 +147,14 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
             <PeriodStats
               items={[
                 { label: t.tables.starsGained, value: movementCells.length > 0 ? `+${fmtStars(movementTotal, locale)}` : t.rankings.noMovement },
-                { label: t.rankings.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: countWithNoun(locale, rankRows.length, t.rankings.repos) },
               ]}
             />
           }
         />
 
         <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
+        {aboutData}
 
         <MovementSection title={t.rankings.monthlyMovement} cells={movementCells} emptyMessage={t.rankings.noMovement} labels={{ starsAdded: t.a11y.starsAdded }} locale={locale} />
 
@@ -188,10 +198,10 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
-export async function RankingsPeriodPageView({ locale, year: yearValue, period: periodValue }: { locale: Locale; year: string; period: string }) {
+export async function RankingsPeriodPageView({ locale, year: yearValue, period: periodValue, pageTitle, canonicalUrl }: { locale: Locale; year: string; period: string } & RankingCitation) {
   const t = await getDictionary(locale);
   const parsed = rankingRoutePeriod(yearValue, periodValue);
   if (!parsed || parsed.window === "year") notFound();
@@ -203,16 +213,17 @@ export async function RankingsPeriodPageView({ locale, year: yearValue, period: 
     periods.week.kind === "week" ? periods.week.year : FIRST_YEAR,
   );
   if (!Number.isInteger(year) || year < FIRST_YEAR || year > maxYear) notFound();
-  if (parsed.window === "week") return WeekRankings({ locale, t, year, week: parsed.week });
-  return MonthRankings({ locale, t, year, month: parsed.month });
+  if (parsed.window === "week") return WeekRankings({ locale, t, year, week: parsed.week, pageTitle, canonicalUrl });
+  return MonthRankings({ locale, t, year, month: parsed.month, pageTitle, canonicalUrl });
 }
 
-async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Dict; year: number; month: number }) {
+async function MonthRankings({ locale, t, year, month, pageTitle, canonicalUrl }: { locale: Locale; t: Dict; year: number; month: number } & RankingCitation) {
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = `${year}-${String(month).padStart(2, "0")}`;
-  const data = await loadPageRankingData("month", period, locale);
+  const [data, currentMonth] = await Promise.all([loadPageRankingData("month", period, locale), getCurrentMonth()]);
   if (!data) notFound();
+  const observationStart = partialPeriodObservationStart("month", period, { currentMonth, heat: data.heat });
   const { newc, heat, rows: flowRows, most, categoryLinks, fastest, newcomers, asOf, dateModified } = data;
 
   const pageLabel = monthYearLabel(locale, year, month);
@@ -223,6 +234,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const movementCells = (heat?.cells ?? []).map(([date, total]) => ({ label: String(Number(String(date).slice(8, 10))), gained: total }));
   const movementTotal = movementCells.reduce((sum, cell) => sum + cell.gained, 0);
   const capsule = asOf ? buildLocalizedRankingCapsule({ locale, title, asOf, rows: flowRows, metric: "gained" }) : null;
+  const removalNotice = repairRemovalNoticeText("month", "repo", period, t.rankings.repairRemovalNotice, locale);
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: flowRows, metric: "gained" });
   const narrative = buildNarrative({
     locale,
@@ -233,9 +245,12 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
     newcomers: newcomers.slice(0, 2).map((r) => `${r.owner}/${r.name}`),
   });
   const tableLabels = repositoryTableLabels(t);
-  const monthNav = await monthNavigation(locale, t, year, month, href);
+  const [monthNav, aboutData] = await Promise.all([
+    monthNavigation(locale, t, year, month, href),
+    rankingAboutData({ locale, dictionary: t, pageTitle, canonicalUrl }),
+  ]);
 
-  return (
+  return { asOf, body: (
     <>
       {rankingDetailStructuredData({ locale, path: routePath, label: pageLabel, rows: flowRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -260,13 +275,16 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
             <PeriodStats
               items={[
                 { label: t.tables.starsGained, value: movementCells.length > 0 ? `+${fmtStars(movementTotal, locale)}` : t.rankings.noMovement },
-                { label: t.rankings.visibleRows, value: `${formatInteger(locale, flowRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: countWithNoun(locale, flowRows.length, t.rankings.repos) },
               ]}
             />
           }
         />
 
-        <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
+        <AnswerBlock capsule={capsule} rows={flowRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending}>
+          {removalNotice ? <RepairRemovalNotice locale={locale} window="month" entity="repo" period={period} copy={t.rankings} /> : null}
+        </AnswerBlock>
+        {aboutData}
 
         {narrative && (
           <section className="mt-[clamp(1.75rem,3.5vw,2.75rem)]">
@@ -303,6 +321,8 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
           emptyMessage={t.categories.rankingPending}
         />
 
+        {observationStart && <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">{t.pulse.observedSince.replace("{date}", dateLabel(locale, observationStart, "long"))}</p>}
+
         <PeriodNavigation title={t.rankings.periodNavigation} previous={monthNav.previous} next={monthNav.next} />
         <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages
@@ -318,16 +338,17 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
-async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict; year: number; week: number }) {
+async function WeekRankings({ locale, t, year, week, pageTitle, canonicalUrl }: { locale: Locale; t: Dict; year: number; week: number } & RankingCitation) {
   if (week < 1 || week > 53) notFound();
   const text = detailText(locale);
   const language = toBcp47Locale(locale);
   const period = isoWeekLabel(year, week);
-  const data = await loadPageRankingData("week", period, locale);
+  const [data, currentMonth] = await Promise.all([loadPageRankingData("week", period, locale), getCurrentMonth()]);
   if (!data) notFound();
+  const observationStart = partialPeriodObservationStart("week", period, { currentMonth });
   const { rows: rankRows, most, categoryLinks, asOf, dateModified } = data;
 
   const pagePath = `/rankings/${year}/W${String(week).padStart(2, "0")}`;
@@ -338,10 +359,13 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const snippet = buildWeeklyMoversSnippet({ locale, period, asOf, rows: rankRows, path: routePath });
   const faqItems = buildLocalizedRankingFaqs({ locale, title, asOf, rows: rankRows, metric: "gained" });
   const tableLabels = repositoryTableLabels(t);
-  const weekNav = await weekNavigation(t, year, week, href);
+  const [weekNav, aboutData] = await Promise.all([
+    weekNavigation(t, year, week, href),
+    rankingAboutData({ locale, dictionary: t, pageTitle, canonicalUrl }),
+  ]);
   const sourceNote = weeklyRankSourceNote(data.flow.meta, t.common);
 
-  return (
+  return { asOf, body: (
     <>
       {rankingDetailStructuredData({ locale, path: routePath, label: period, rows: rankRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -365,13 +389,14 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
             <PeriodStats
               items={[
                 { label: t.week.label, value: period },
-                { label: t.rankings.visibleRows, value: `${formatInteger(locale, rankRows.length)} ${t.rankings.repos}` },
+                { label: t.rankings.visibleRows, value: countWithNoun(locale, rankRows.length, t.rankings.repos) },
               ]}
             />
           }
         />
-        {sourceNote && <p className="mt-4 text-sm leading-relaxed text-on-surface-variant">{sourceNote}</p>}
+        <SourceNote text={sourceNote} />
         <AnswerBlock capsule={capsule} rows={rankRows} locale={locale} labels={answerCapsuleLabels(locale, t)} leaderLinksLabel={t.a11y.topRepositoryLinks} emptyMessage={t.categories.rankingPending} />
+        {aboutData}
         {snippet && <ShareableSnippet snippet={snippet} className="mt-[clamp(1.75rem,3.5vw,2.75rem)]" labels={shareableSnippetLabels(t)} />}
 
         <RankingMetricGrid
@@ -399,6 +424,8 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
           title={text.completeRanking}
           emptyMessage={t.categories.rankingPending}
         />
+        {observationStart && <p className="mt-3 text-sm leading-relaxed text-on-surface-variant">{t.pulse.observedSince.replace("{date}", dateLabel(locale, observationStart, "long"))}</p>}
+
         <PeriodNavigation title={t.rankings.periodNavigation} previous={weekNav.previous} next={weekNav.next} />
         <RankingCategoryExits locale={locale} links={categoryLinks} t={t} />
         <RelatedPages
@@ -414,7 +441,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
 function loadPageRankingData(window: "year" | "month" | "week", period: string, locale: Locale) {

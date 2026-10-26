@@ -31,6 +31,14 @@ rank page. Unknown/private categories, missing populated ranks and malformed
 page numbers return 404; `/page/1` redirects permanently to its canonical base.
 Zero-count public categories retain the original pending-data page.
 
+Category index, dimension, detail and paginated detail views accept an optional
+`aboutThisData` static React node after the answer capsule and before the FAQ.
+The Astro loader creates it inside the captured publication scope with the
+current `meta.json`, that publication's view version, and the route's own title
+and canonical URL. It always selects `currentTotals`. The Astro wrapper loads
+the disclosure's Copy enhancement because the node is rendered inside the
+shared React view rather than as a standalone Astro component.
+
 The adapter is a temporary page-layer bridge while `web/` remains the migration
 comparison baseline. Final integration must relocate these imported views and
 translations before removing `web/`, as required by the shared migration plan.

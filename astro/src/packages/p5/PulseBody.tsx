@@ -1,6 +1,8 @@
+import { pageIdentity } from "../../lib/page-identity";
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
 import { FaqBlock } from "@/app/_explore/FaqBlock";
 import { PageHero } from "@/app/_explore/PageHero";
 import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
@@ -28,28 +30,44 @@ import { repositoryTableLabels } from "./ui";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "../../../../web/app/_localized/seo-copy";
 import { answerCapsuleLabels } from "../../../../web/app/_localized/detail-copy";
 import { EmptyState, periodSwitcherLinks } from "./ui";
+import { partialPeriodObservationStart } from "../p1/period-observation";
+import { pulseYearRows } from "./year-state";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "../../../../web/app/_localized/ranking-page-data";
+import { onThisDayEmptyMessage } from "../../../../web/lib/on-this-day-empty";
 
-export function PulseBody({ locale, t, data, now = new Date() }: {
+/** Pulse capsules prefer the snapshot timestamp, then the active week and month rankings. */
+export function pulseSummaryAsOf(data: Pick<PulseData, "snap" | "activeWeekRank" | "activeMonthRank">, locale: Locale) {
+  return resolveDataAsOfLabel(data.snap?.generated_at, data.activeWeekRank?.meta.generated_at, data.activeMonthRank?.meta.generated_at, { locale });
+}
+
+export function PulseBody({ locale, t, data, releaseId, now = new Date() }: {
   locale: Locale; t: Dict; data: PulseData; now?: Date;
+  releaseId: string | null;
 }) {
   const canonicalPath = "/pulse";
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, canonicalPath);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const { snap, lookup, availablePeriods, activeWeekRank, activeMonthRank } = data;
+  const { snap, lookup, availablePeriods, activeWeekRank, activeMonthRank, currentMonth, monthHeat } = data;
 
   const labelCopy = { fullHistory: t.rankings.fullHistory };
   const metaCopy = pulseListMetaCopy(t);
   const activeWeekLabel = availablePeriodLabel(locale, availablePeriods.week, labelCopy);
   const activeMonthLabel = availablePeriodLabel(locale, availablePeriods.month, labelCopy);
   const activeYearLabel = availablePeriodLabel(locale, availablePeriods.yearLink, labelCopy);
+  const yearUnavailable = availablePeriods.yearLink.kind !== "year" || snap?.freshness?.current_year === null;
   const weekRows = lookup && activeWeekRank ? projectRepoRows(activeWeekRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
   const monthRows = lookup && activeMonthRank ? projectRepoRows(activeMonthRank.items.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
-  const yearRows = snap && lookup ? projectRepoRows(snap.current_year.flow.slice(0, PULSE_MOVER_LIMIT), lookup) : [];
+  const weekObservationStart = availablePeriods.week.kind === "week"
+    ? partialPeriodObservationStart("week", availablePeriods.week.period, { currentMonth })
+    : null;
+  const monthObservationStart = availablePeriods.month.kind === "month"
+    ? partialPeriodObservationStart("month", availablePeriods.month.period, { currentMonth, heat: monthHeat })
+    : null;
+  const yearRows = pulseYearRows(yearUnavailable, snap && lookup ? projectRepoRows(snap.current_year.flow.slice(0, PULSE_MOVER_LIMIT), lookup) : []);
   const giants = snap && lookup ? projectRepoRows(snap.all_time.repo.slice(0, PULSE_GIANT_LIMIT), lookup, "total") : [];
-  const asOf = resolveDataAsOfLabel(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at, { locale });
+  const asOf = pulseSummaryAsOf(data, locale);
   const dateModified = resolveDataAsOfValue(snap?.generated_at, activeWeekRank?.meta.generated_at, activeMonthRank?.meta.generated_at);
   const weekMeta = formatPulseListMeta({
     periodLabel: activeWeekLabel,
@@ -68,7 +86,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
   const yearMeta = formatPulseListMeta({
     periodLabel: activeYearLabel,
     isFallback: availablePeriods.yearLink.kind !== "year" || availablePeriods.yearLink.year !== periods.year,
-    asOf: periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
+    asOf: yearUnavailable ? undefined : periodAsOfCandidate(availablePeriods.yearLink) ?? snap?.freshness?.current_year ?? snap?.generated_at,
     locale,
     copy: metaCopy,
   });
@@ -79,9 +97,10 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
     copy: metaCopy,
   });
   const todayIso = now.toISOString().slice(0, 10);
+  const onThisDayAsOf = snap?.freshness?.on_this_day ?? null;
   const onThisDayMeta = formatPulseListMeta({
     periodLabel: dateLabel(locale, todayIso, "long"),
-    asOf: snap?.freshness?.on_this_day ?? snap?.generated_at,
+    asOf: onThisDayAsOf,
     locale,
     copy: metaCopy,
   });
@@ -120,12 +139,23 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
 
+        <AboutThisDataContent
+          locale={locale}
+          dictionary={t}
+          meta={data.meta}
+          releaseId={releaseId}
+          layer="periodGains"
+          additionalLayers={["currentTotals"]}
+          {...pageIdentity(locale, canonicalPath, t.meta.pulseTitle)}
+        />
+
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel
             title={t.week.top}
             href={boards.week}
             meta={weekMeta}
             note={activeWeekRank && weekRows.length > 0 ? weeklyRankSourceNote(activeWeekRank.meta, t.common) : undefined}
+            coverageNote={weekObservationStart ? t.pulse.observedSince.replace("{date}", dateLabel(locale, weekObservationStart, "long")) : undefined}
             rows={weekRows}
             labels={repoLabels}
             openLabel={fullBoardLabel}
@@ -137,6 +167,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
             title={t.pulse.surging}
             href={boards.month}
             meta={monthMeta}
+            coverageNote={monthObservationStart ? t.pulse.observedSince.replace("{date}", dateLabel(locale, monthObservationStart, "long")) : undefined}
             rows={monthRows}
             labels={repoLabels}
             openLabel={fullBoardLabel}
@@ -156,7 +187,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
             labels={repoLabels}
             openLabel={fullBoardLabel}
             linkLabel={`${fullBoardLabel}: ${activeYearLabel}`}
-            emptyMessage={t.categories.rankingPending}
+            emptyMessage={t.pulse.noYearlyDataYet}
             locale={locale}
           />
         </div>
@@ -165,7 +196,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
           links={[
             { label: t.week.label, href: boards.week, period: weekMeta, row: weekRows[0] },
             { label: t.month.label, href: boards.month, period: monthMeta, row: monthRows[0] },
-            { label: t.year.label, href: boards.year, period: yearMeta, row: yearRows[0] },
+            { label: t.year.label, href: boards.year, period: yearMeta, row: yearRows[0], emptyLabel: t.pulse.noYearlyDataYet },
           ]}
           pendingLabel={t.categories.rankingPending}
           locale={locale}
@@ -218,7 +249,7 @@ export function PulseBody({ locale, t, data, now = new Date() }: {
                 ))}
               </ul>
             ) : (
-              <EmptyState message={t.categories.rankingPending} className="mt-0" />
+              <EmptyState message={onThisDayEmptyMessage(onThisDayAsOf, { unavailable: t.pulse.milestoneHistoryUnavailable, noneToday: t.pulse.noMilestonesToday })} className="mt-0" />
             )}
           </aside>
         </section>
@@ -234,6 +265,7 @@ function PulsePanel({
   href,
   meta,
   note,
+  coverageNote,
   rows,
   labels,
   openLabel,
@@ -245,6 +277,7 @@ function PulsePanel({
   href: string;
   meta?: string;
   note?: string;
+  coverageNote?: string;
   rows: Row[];
   labels: ReturnType<typeof repositoryTableLabels>;
   openLabel: string;
@@ -269,6 +302,7 @@ function PulsePanel({
       ) : (
         <EmptyState message={emptyMessage} />
       )}
+      {coverageNote && <p className="mt-2 text-sm leading-relaxed text-on-surface-variant">{coverageNote}</p>}
     </section>
   );
 }
@@ -279,7 +313,7 @@ function PulseLeaderLinks({
   locale,
   className = "mt-3",
 }: {
-  links: Array<{ label: ReactNode; href: string; period: string; row?: Row }>;
+  links: Array<{ label: ReactNode; href: string; period: string; row?: Row; emptyLabel?: string }>;
   pendingLabel: string;
   locale: Locale;
   className?: string;
@@ -294,7 +328,7 @@ function PulseLeaderLinks({
         >
           <span className="font-mono text-[0.7rem] uppercase tracking-wider text-on-surface-variant">{link.label}</span>
           <span className="mt-1 block truncate font-mono text-[0.92rem] font-extrabold text-on-surface">
-            {link.row ? `${link.row.owner}/${link.row.name}` : pendingLabel}
+            {link.row ? `${link.row.owner}/${link.row.name}` : link.emptyLabel ?? pendingLabel}
           </span>
           <span className="mt-1 block max-w-full break-words font-mono text-[0.76rem] text-on-surface-variant [overflow-wrap:anywhere]">
             {link.row?.gained == null ? link.period : `${link.period} · +${fmtStars(link.row.gained, locale)}`}

@@ -1,0 +1,12 @@
+---
+import ReleasePage from "../../packages/releases/ReleasePage.astro";
+import ReleasesPage from "../../packages/p6/ReleasesPage.astro";
+import { loadRelease } from "../../packages/releases/data";
+export const prerender = false;
+const id = Astro.params.id;
+if (!id) return new Response("Not found", { status: 404 });
+const locale = "en";
+const loaded = await loadRelease(Astro.locals.data, id);
+if (!loaded) Astro.response.status = 404;
+---
+{loaded ? <ReleasePage locale={locale} loaded={loaded} /> : <ReleasesPage locale={locale} id={id} />}

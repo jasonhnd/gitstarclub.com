@@ -104,6 +104,7 @@ export function AnswerBlock({
   labels,
   leaderLinksLabel,
   emptyMessage,
+  children,
 }: {
   capsule: Parameters<typeof AnswerCapsule>[0]["capsule"] | null;
   rows: Row[];
@@ -111,12 +112,14 @@ export function AnswerBlock({
   labels: Parameters<typeof AnswerCapsule>[0]["labels"];
   leaderLinksLabel: string;
   emptyMessage: string;
+  children?: ReactNode;
 }) {
-  if (!capsule) return null;
+  if (!capsule && !children) return null;
   return (
     <div className="mt-[clamp(1.75rem,4vw,3rem)]">
-      <AnswerCapsule capsule={capsule} labels={labels} />
-      <RankingLeaderLinks rows={rows.slice(0, RANKING_FEATURED_LIMIT)} locale={locale} ariaLabel={leaderLinksLabel} emptyMessage={emptyMessage} />
+      {capsule ? <AnswerCapsule capsule={capsule} labels={labels} /> : null}
+      {children}
+      {capsule ? <RankingLeaderLinks rows={rows.slice(0, RANKING_FEATURED_LIMIT)} locale={locale} ariaLabel={leaderLinksLabel} emptyMessage={emptyMessage} /> : null}
     </div>
   );
 }

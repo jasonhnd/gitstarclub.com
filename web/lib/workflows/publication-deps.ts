@@ -8,6 +8,7 @@ import { createView, putView } from "@/lib/data/write";
 import { submitWorkflowPublishIndexNow } from "@/lib/indexnow";
 import { renewWorkflowLease } from "@/lib/workflows/lease";
 import type { PublicationDeps } from "@/lib/workflows/publication-core";
+import { appendReleaseRecord, prepareReleaseRecord } from "@/lib/workflows/releases";
 import {
   requestPublishedViewsInvalidation,
   resolvePublicationInvalidationTarget,
@@ -29,5 +30,7 @@ export const productionPublicationDeps: PublicationDeps = {
   },
   invalidate: () => requestPublishedViewsInvalidation(),
   notifyIndexNow: submitWorkflowPublishIndexNow,
+  prepareRelease: prepareReleaseRecord,
+  appendRelease: appendReleaseRecord,
   now: () => new Date().toISOString(),
 };

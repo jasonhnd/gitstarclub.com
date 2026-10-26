@@ -12,9 +12,15 @@ const labels = {
   ...t.compare, pickerEmpty: t.search.empty, pickerLoading: t.search.loading,
   compareModesAria: t.a11y.compareModes, starHistoryOverlayAria: t.a11y.starHistoryOverlay,
 };
+const canonicalUrl = new URL(localizedPath(locale, "/compare"), "https://gitstarclub.com").href;
+const pageTitle = `${t.meta.compareTitle} · GitStarClub`;
+const releaseId = Astro.locals.publication?.views?.version ?? null;
 ---
 <Layout locale={locale} canonicalPath="/compare" title={t.meta.compareTitle} description={t.meta.compareDescription}>
-  <CompareBody locale={locale} t={t} {...data}>
+  <CompareBody locale={locale} t={t} {...data} releaseId={releaseId} pageTitle={pageTitle} canonicalUrl={canonicalUrl}>
     <CompareClient client:load labels={labels} comparePath={localizedPath(locale, "/compare")} locale={locale} initialSearch={Astro.url.search} />
   </CompareBody>
 </Layout>
+<script>
+  import "../../components/about-this-data";
+</script>

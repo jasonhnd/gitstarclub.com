@@ -4,20 +4,26 @@ import { getDictionary, LOCALES, type Locale } from "../../../web/lib/i18n";
 import { localizedPath, toHreflang, toOpenGraphLocale } from "../../../web/lib/i18n/routing";
 import { THEME_INIT_SCRIPT } from "../../../web/lib/theme-script";
 import { siteIndexable } from "../lib/mode";
+import { withPublishedReaders } from "../lib/published-readers";
+import { getMeta } from "../../../web/lib/data";
+import { resolveDataAsOfFromMeta } from "../../../web/lib/geo-capsules";
 import Chrome from "../components/Chrome.astro";
 import Footer from "../components/Footer.astro";
-interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string; ogUrl?: string }
-const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image", ogUrl } = Astro.props;
+import { pageIdentity } from "../lib/page-identity";
+interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string; ogUrl?: string; asOf?: string | null }
+const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image", ogUrl, asOf: summaryAsOf } = Astro.props;
 const t = await getDictionary(locale);
+const meta = !summaryAsOf && Astro.locals.data ? await withPublishedReaders(Astro.locals.data, getMeta, { cloudflareReadPolicy: true }) : null;
+const asOf = summaryAsOf ?? resolveDataAsOfFromMeta(meta, { locale });
 const origin = "https://gitstarclub.com";
-const canonical = new URL(localizedPath(locale, canonicalPath), origin).href;
+const { canonicalUrl: canonical, pageTitle } = pageIdentity(locale, canonicalPath, title, absoluteTitle);
 const image = new URL(ogImage, origin).href;
 ---
 <html lang={toHreflang(locale)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>{absoluteTitle ? title : `${title} · GitStarClub`}</title>
+    <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <meta name="robots" content={siteIndexable ? "index, follow" : "noindex, nofollow"} />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -42,7 +48,7 @@ const image = new URL(ogImage, origin).href;
     <div class="contents">
       <Chrome locale={locale} canonicalPath={canonicalPath} dictionary={t} tag={tag} />
       <slot />
-      <Footer locale={locale} canonicalPath={canonicalPath} dictionary={t} />
+      <Footer locale={locale} canonicalPath={canonicalPath} dictionary={t} asOf={asOf} />
     </div>
   </body>
 </html>

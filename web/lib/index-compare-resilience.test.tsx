@@ -56,44 +56,42 @@ afterAll(() => {
   mock.restore();
 });
 
-// Fixed SHA-256 values captured from origin/pre b9650f0 with these fixtures.
-// Only ko/categories is refreshed for issue #612: intentional Korean conjunctions.
-// The other 20 values retain the original pre baseline.
+// SHA-256 of the shared chrome HTML. Refreshed when the header search classes change (#819).
 const baseline: Record<string, Record<string, string>> = {
   "en": {
-    "org": "1497576aa088189c8dd729b7fd619df3f8701f341cc2174ae5d0dfc5a358ff35",
-    "compare": "5d93bff739fcb521fdbc11d7616ed9f9e060d5370b8d354886049087fba8dd5a",
-    "categories": "fca6efea4dd48ce38f234498a30e19cb43ec71733a4871ccda6d84e52cf24fe1"
+    "org": "b64f7069b6fc8f4caf81f1956ab8e2b0ffd28620ca22465087ef79729bb20d5a",
+    "compare": "4f45dccb3b1dfa880deb1dacafa9743bd3bae3abaef1ea6485ab8d62a4fc0323",
+    "categories": "7f1e9723d313363c48d63beb7ed206ed551f4592f39f43da054eeee9c25813c0"
   },
   "ja": {
-    "org": "ecd64890c0250edd2bc159ab19ea1f26339ee107b00e2c11866a03bc8f14ecd1",
-    "compare": "fb9236f2a6ce0bb1cfb430737ccd7e94c53630acb7f26a2bc07e93a5ba048a96",
-    "categories": "fbceb9c0416fcd4ad4b770dccd246e836242b1b28d36e86ac76be085d87c80cb"
+    "org": "c6d336868f9b234cc9842b2a483a7c7c5aa4c51b95a3d7d33c115940cf898412",
+    "compare": "520c013b961ef95b334540cd12dafd6b61c1bdeed87f17a519c342864a533d6f",
+    "categories": "1891f9ea5cedad24da62f350ce76a012f88e5c74a3ef1e6499c78247cb1f38e6"
   },
   "zh": {
-    "org": "9df66aa226821cf126d9c950b72458fef26f6181c2796e00b58de65ab1076891",
-    "compare": "37255ddc56ab335d1ccc1ffd2471f2706681367060172ce00349d0af617515ce",
-    "categories": "988a441d7f0357063a65a2f6e6f2a80807fc0d51069ddfc0a580c69b1401f9ac"
+    "org": "5e3f478678430c527118dba1047c52fdfe78cd669df78b6fd26f73f7e239f9da",
+    "compare": "09c2b2b73721ce43244b16b544ce8ca3afe4fb81c3ecc55ba29c281871300437",
+    "categories": "d73fbab2279be6d86deadbc1ad62012d9fb8f3b1fd815fce9077ef9b8f92a8be"
   },
   "zh-TW": {
-    "org": "36327b33cdaae8c76056d29e7778e44ae833a3e33fdadf065e80528079737ede",
-    "compare": "7229bd6404bb3c67af468b4fdaceb34ca595abf51dfae7e19b8372c01bb720ac",
-    "categories": "ee525e390144e6a1cbfd0c037e20fefa84f4f407922bd58c272a0d1189d8925c"
+    "org": "fb221fc3ae3fa348c2f4f9d5e74afb21c7a064d9b370c089db704c35547634ee",
+    "compare": "39dfd1f72f9d260483b41edf9a49f82bb81bd3610a1cf21d86ad192c239c80cf",
+    "categories": "a708c5e5863748b3b6ccc3ad9130653ac1dadf64840e4d28e9dc708c3a8f5ce9"
   },
   "ko": {
-    "org": "1d6fae0e39f94686e741fd041e74947ad267adb7f0c5e5e93427a5b0e4182b91",
-    "compare": "8ae2ff6ef0cccb9e0f018011bca8b76aa9e7e82771b841750522b51d6b1a9961",
-    "categories": "6c37f0a641aa887b228fc1bf51f3b75f02fe593c072301aa3562448ae6dd133c"
+    "org": "bcb4618ed24ef14c17cdfa27364194c98ea396e0baf05e9432ed4791c4d35958",
+    "compare": "95a997a185240ebcef76a671cd2e45738ff33c9617e090da63fbb81b4a2285bd",
+    "categories": "ea83de89700978bd059b064752010bb3ba516c001589371aead6015a9be51316"
   },
   "es": {
-    "org": "73f4bc08cde600816bd8757af329a6b7d7b83097606be7002df0e80be943fa8b",
-    "compare": "fee00c05d424673bef0973dbd31e034de0dbdd6e6ffae6ed199387e01ed88c54",
-    "categories": "a6264b0cb22648ebd5dcbc366c0b1028bf441941a3672bb8bbd6c4cfdba94b39"
+    "org": "a260ddfc31f2bfaa2388e22770035a8a18168deefaef6ff1b3526a103a1018f9",
+    "compare": "b2e4838419d27b7e929bc9ffadefbb78a0890b4e75a94573c2f69dde9244d11b",
+    "categories": "1afd8d2fc0aff484db6771251229278994af6676b8e0b820f70c230c6a194557"
   },
   "fr": {
-    "org": "ea4d509ec2c5e611c10cb2f13414c7d4b70f4dc692b93495e3339e275958728a",
-    "compare": "8fc2c2c27e922620420aed836db845e3dc19c8a4c6970d5cd3c1b6c42f3c0a59",
-    "categories": "bd8493a6c441816fa1ccd1f9725c762cd2a437dc1feb88c2359130190b7a7cf1"
+    "org": "982ed504d1ac44265585cb3b4fa732f66a0aacdcf6ac4705fd324b0639f0c08f",
+    "compare": "9d7acc96cd8739299bd9784baa1a02dc8a5160e0614dd83d6f3a6687b004e65e",
+    "categories": "3fe0d1e6c1ef9fe0a95b4ca6b6466b69b9d46084cf8b4b18ecc8311a9c1dd3a9"
   }
 };
 

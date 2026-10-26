@@ -104,7 +104,7 @@ describe("Astro consumer subrequest budget with 5,669 repositories and owners", 
     for (const name of ["fold", "recomputeRank", "recomputeRepoEntities", "recomputeOrgEntities", "validate", "publish", "gc"]) {
       expect(counts.get(name)?.hops, name).toBeGreaterThan(1);
     }
-    expect(publishCounts).toEqual([23, 452, 455]);
+    expect(publishCounts).toEqual([60, 452, 455]);
     expect(counts.get("publish")!.max).toBeLessThan(500);
   });
 

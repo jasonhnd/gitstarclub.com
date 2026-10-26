@@ -1,0 +1,8 @@
+---
+import ReleasesPage from "../../../packages/p6/ReleasesPage.astro";
+import { isLocale } from "../../../../../web/lib/i18n";
+export const prerender = false;
+const { locale } = Astro.params;
+if (!isLocale(locale) || locale === "en") return new Response("Not found", { status: 404 });
+---
+<ReleasesPage locale={locale} />

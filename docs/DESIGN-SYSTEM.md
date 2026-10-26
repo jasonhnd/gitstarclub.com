@@ -208,6 +208,10 @@ The locked global CSS defines only a small set of spacing behavior:
 The baseline does not define global `--space-*` tokens. Adding them or changing
 page spacing changes the visual baseline.
 
+The mobile header navigation scroll fade uses `--md-sys-color-surface` in both
+background layers, matching the header surface in light and dark themes. At the
+desktop breakpoint (64rem), the fade background is removed.
+
 ## Radius
 
 The locked global CSS does not define global `--radius-*` or `--shape-*`
@@ -274,6 +278,10 @@ The top bar baseline from commit `689605c` is:
 
 Changing the top bar background, blur, border, spacing, text sizes, responsive
 visibility, controls, or logo treatment is a visual change.
+
+The shared search input fills the available field width below `sm` (640 px).
+Placeholder text stays complete when it fits and uses an ellipsis on overflow.
+At `sm` and `lg`, the existing input widths remain 11rem and 14rem respectively.
 
 ## Base CSS Behavior
 
