@@ -205,6 +205,7 @@ export function nextRefreshJob(
       repos: (job.cursor.metadata?.repos ?? 0) + (result.repos ?? 0),
       historical: (job.cursor.metadata?.historical ?? 0) + (result.historical ?? 0),
       fromGithub: (job.cursor.metadata?.fromGithub ?? 0) + (result.from_github ?? 0),
+      skipped: (job.cursor.metadata?.skipped ?? 0) + (result.skipped_count ?? result.skipped?.length ?? 0),
     };
     if (bucket + 1 < buckets) {
       return {
@@ -233,7 +234,7 @@ export function nextRefreshJob(
       runId: job.runId,
       name: "metadata",
       attempt: 0,
-      cursor: { ...cursor, bucket: 0, metadata: { repos: 0, historical: 0, fromGithub: 0 } },
+      cursor: { ...cursor, bucket: 0, metadata: { repos: 0, historical: 0, fromGithub: 0, skipped: 0 } },
     };
   }
 

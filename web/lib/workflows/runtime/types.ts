@@ -63,6 +63,7 @@ export type RefreshCursor = {
     repos: number;
     historical: number;
     fromGithub: number;
+    skipped?: number;
   };
   preflightOffset?: number;
   preflightAcc?: CanonicalPreflightCursorAcc;
@@ -103,6 +104,8 @@ export type RefreshStepResult = {
   repos?: number;
   historical?: number;
   from_github?: number;
+  skipped_count?: number;
+  skipped?: unknown[];
   files?: number;
   ok?: boolean;
   error?: string;
