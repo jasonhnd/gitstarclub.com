@@ -184,7 +184,7 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
           <BulletList items={[t.about.sample1, t.about.sample2, t.about.sample3, t.about.sample4, t.about.sample5]} />
         </Section>
 
-        <Section heading={t.about.s1h}>
+        <Section heading={t.about.s1h} id="current-totals">
           <p>
             {t.about.s1pPre}
             <ExternalLink href="https://www.gharchive.org/">GH Archive</ExternalLink>
@@ -199,12 +199,12 @@ export function AboutBody({ locale, dictionary: t, meta }: { locale: Locale; dic
           </p>
         </Section>
 
-        <Section heading={t.about.rankingHeading}>
+        <Section heading={t.about.rankingHeading} id="period-gains">
           <p>{t.about.rankingP1}</p>
           <p>{t.about.rankingP2}</p>
         </Section>
 
-        <Section heading={t.about.anchorHeading}>
+        <Section heading={t.about.anchorHeading} id="history-curve">
           <p>{t.about.anchorP1}</p>
           <p>
             {foldedMonth ? (
