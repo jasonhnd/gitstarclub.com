@@ -15,8 +15,8 @@ describe("typed host contract", () => {
         const worker = structuredClone(factory(mode));
         const host = factory === hostWorker ? "web" : "astro";
         for (const binding of [factory(mode === "pre" ? "production" : "pre").env.GSC_CACHE, { type: "kv" }]) {
-          worker.env.GSC_CACHE = binding;
-          assert.ok(assertHostContract(worker, mode, host).includes(`${mode}: binding GSC_CACHE`));
+          const changed = { ...worker, env: { ...worker.env, GSC_CACHE: binding } };
+          assert.ok(assertHostContract(changed, mode, host).includes(`${mode}: binding GSC_CACHE`));
         }
       }
     });
