@@ -7,10 +7,11 @@ import {
 
 const GENERATION = "bootstrap-repair-824";
 const RECOVERY = "bootstrap-recovery-824";
-const buckets = { pre: "gitstarclub-data-pre", production: "gitstarclub-data-prod" };
+const buckets = { pre: "gitstarclub-data-pre", production: "gitstarclub-data-prod", rehearsal: "gitstarclub-data-rehearsal" };
 function options(target: PublishTarget): PublishTargetOptions {
   return { target, bucket: buckets[target], generation: GENERATION,
-    ...(target === "production" ? { confirmProduction: `publish ${GENERATION} to ${buckets.production}` } : {}) };
+    ...(target === "production" ? { confirmProduction: `publish ${GENERATION} to ${buckets.production}` }
+      : target === "rehearsal" ? { confirmProduction: `rehearse ${GENERATION} in ${buckets.rehearsal}` } : {}) };
 }
 function fake(body: unknown, code = 0) {
   const calls: string[][] = [];
@@ -24,14 +25,14 @@ const identity = (target: PublishTarget) => ({ bucket: buckets[target], deploy_e
 const readArgs = (target: PublishTarget) => ["r2", "objects", "get", "_meta/bucket-identity.json", "--bucket-name", buckets[target], "--text"];
 
 describe("repair publication target guards", () => {
-  for (const target of ["pre", "production"] as const) {
+  for (const target of ["pre", "production", "rehearsal"] as const) {
     test(`${target}: accepts only the exact bucket and identity with one read`, async () => {
       const { runner, calls } = fake(identity(target));
       expect(await resolvePublishTarget(options(target), runner)).toEqual({ target, bucket: buckets[target], generation: GENERATION });
       expect(calls).toEqual([readArgs(target)]);
     });
 
-    for (const bucket of ["", buckets[target === "pre" ? "production" : "pre"], "other-pre", "other-prod", `${buckets[target]} `, buckets[target].toUpperCase()]) {
+    for (const bucket of ["", ...Object.values(buckets).filter((bucket) => bucket !== buckets[target]), "other-pre", "other-prod", `${buckets[target]} `, buckets[target].toUpperCase()]) {
       test(`${target}: refuses bucket ${JSON.stringify(bucket)} before any cf call`, async () => {
         const { runner, calls } = fake(identity(target));
         await expect(resolvePublishTarget({ ...options(target), bucket }, runner)).rejects.toThrow(`requires bucket ${buckets[target]}`);
@@ -39,8 +40,8 @@ describe("repair publication target guards", () => {
       });
     }
 
-    for (const marker of [null, [], "pre", {}, { bucket: buckets[target] }, { deploy_env: target }, identity(target === "pre" ? "production" : "pre"),
-      { bucket: buckets[target], deploy_env: target === "pre" ? "production" : "pre" }, { bucket: "other", deploy_env: target },
+    for (const marker of [null, [], "pre", {}, { bucket: buckets[target] }, { deploy_env: target }, ...(["pre", "production", "rehearsal"] as const).filter((other) => other !== target).flatMap((other) =>
+      [identity(other), { bucket: buckets[target], deploy_env: other }]), { bucket: "other", deploy_env: target },
       { bucket: buckets[target], deploy_env: target === "production" ? "prod" : "PRE" }]) {
       test(`${target}: refuses invalid identity ${JSON.stringify(marker)}`, async () => {
         const { runner, calls } = fake(marker);
@@ -72,10 +73,22 @@ describe("repair publication target guards", () => {
     });
   }
   for (const confirmProduction of [undefined, "", "yes", `publish ${RECOVERY} to ${buckets.production}`, `publish ${GENERATION} to ${buckets.pre}`,
+    `rehearse ${GENERATION} in ${buckets.rehearsal}`,
     `publish ${GENERATION} to ${buckets.production} `, ` publish ${GENERATION} to ${buckets.production}`, `Publish ${GENERATION} to ${buckets.production}`]) {
     test(`refuses production confirmation ${JSON.stringify(confirmProduction)} before reading`, async () => {
       const { runner, calls } = fake(identity("production"));
       await expect(resolvePublishTarget({ ...options("production"), confirmProduction }, runner)).rejects.toThrow("exact --confirm-production");
+      expect(calls).toEqual([]);
+    });
+  }
+  for (const confirmProduction of [undefined, "", "yes", `publish ${GENERATION} to ${buckets.rehearsal}`,
+    `publish ${GENERATION} to ${buckets.production}`, `rehearse ${RECOVERY} in ${buckets.rehearsal}`,
+    `rehearse ${GENERATION} in ${buckets.production}`, `rehearse ${GENERATION} in ${buckets.pre}`,
+    `rehearse ${GENERATION} in ${buckets.rehearsal} `, ` rehearse ${GENERATION} in ${buckets.rehearsal}`,
+    `Rehearse ${GENERATION} in ${buckets.rehearsal}`]) {
+    test(`refuses rehearsal confirmation ${JSON.stringify(confirmProduction)} before reading`, async () => {
+      const { runner, calls } = fake(identity("rehearsal"));
+      await expect(resolvePublishTarget({ ...options("rehearsal"), confirmProduction }, runner)).rejects.toThrow("exact --confirm-production");
       expect(calls).toEqual([]);
     });
   }
@@ -109,11 +122,12 @@ describe("repair publication target guards", () => {
 });
 
 describe("recovery pointer command for later CLI integration", () => {
-  for (const target of ["pre", "production"] as const) {
+  for (const target of ["pre", "production", "rehearsal"] as const) {
     test(`formats the exact ${target} command`, () => {
       expect(formatRollbackCommand(target, RECOVERY)).toBe(
         `bun --no-env-file web/scripts/repair-publish.ts --target ${target} --bucket ${buckets[target]} --rollback ${RECOVERY}`
-        + (target === "production" ? ` --confirm-production "publish ${RECOVERY} to ${buckets.production}"` : ""));
+        + (target === "production" ? ` --confirm-production "publish ${RECOVERY} to ${buckets.production}"`
+          : target === "rehearsal" ? ` --confirm-production "rehearse ${RECOVERY} in ${buckets.rehearsal}"` : ""));
     });
   }
   for (const generation of ["", "legacy-flat", "../unsafe", "bootstrap-valid;echo unsafe", "bootstrap-$(id)", "bootstrap-id\nnext"]) {

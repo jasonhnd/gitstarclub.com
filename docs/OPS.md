@@ -914,6 +914,18 @@ operation; source configuration alone is not proof. Exclude preview refreshes
 and scheduled tasks during the pre rehearsal too. The lease is advisory (it
 cannot prevent a competing writer because cf has no conditional put).
 
+Before production, Tech seeds the private `gitstarclub-data-rehearsal` bucket
+(no public domain or r2.dev) with a copy of production's fixed frozen tree and
+flat canonical recovery objects, without `bootstrap/latest.json` or
+`views/latest.json`. Its `_meta/bucket-identity.json` must be
+`{"bucket":"gitstarclub-data-rehearsal","deploy_env":"rehearsal"}`.
+The rehearsal uses the same recovery sources, first publication without a
+pointer, and rollback checks as production, including typed confirmation through
+`--confirm-production`. Do not use the preview bucket for this rehearsal: it
+lacks the production frozen tree, has different flat canonical contents and an
+existing bootstrap pointer, and publication would replace the preview site's
+served data.
+
 From the repository root, select the reviewed builder output and the reviewed,
 complete frozen base inventory described below. The generation is inferred from
 the sole directory under `bootstrap/generations/`; `--generation` can select it
@@ -925,13 +937,15 @@ BASE_KEYS=/absolute/path/to/reviewed-frozen-base-keys.json
 GEN=bootstrap-prod-repair-786
 RECOVERY=bootstrap-prod-repair-786-recovery
 
-# Rehearse pre first. Dry-run reads the bucket but makes no write calls.
-bun run repair:publish -- --target pre --bucket gitstarclub-data-pre \
+# Rehearse in the private scratch bucket first. Dry-run makes no write calls.
+bun run repair:publish -- --target rehearsal --bucket gitstarclub-data-rehearsal \
   --generation-dir "$REPAIRED" --generation "$GEN" \
-  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS" --dry-run
-bun run repair:publish -- --target pre --bucket gitstarclub-data-pre \
+  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS" \
+  --confirm-production "rehearse $GEN in gitstarclub-data-rehearsal" --dry-run
+bun run repair:publish -- --target rehearsal --bucket gitstarclub-data-rehearsal \
   --generation-dir "$REPAIRED" --generation "$GEN" \
-  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS"
+  --recovery-generation "$RECOVERY" --recovery-base-keys "$BASE_KEYS" \
+  --confirm-production "rehearse $GEN in gitstarclub-data-rehearsal"
 
 # Production: recheck the single-writer window, then dry-run and publish.
 bun run repair:publish -- --target production --bucket gitstarclub-data-prod \

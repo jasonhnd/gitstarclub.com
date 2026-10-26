@@ -25,7 +25,7 @@ export function parseRepairArgs(argv: string[]) {
     assert(value && !value.startsWith("--"), `Expected value for ${flag}`);
     values[flag] = value;
   }
-  assert(values["--target"] && values["--bucket"], "Required: --target pre|production --bucket NAME");
+  assert(values["--target"] && values["--bucket"], "Required: --target pre|production|rehearsal --bucket NAME");
   const rollback = values["--rollback"];
   if (rollback) {
     assert(!["--generation-dir", "--generation", "--recovery-generation", "--recovery-base-keys"].some((flag) => values[flag]), "--rollback cannot publish builder output");

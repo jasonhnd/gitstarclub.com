@@ -6,7 +6,7 @@ import { assertBootstrapGeneration } from "../../pipeline/lib/bootstrap-publicat
 
 import { cfChild, type CfRunner } from "./repair-publish-cf";
 export type { CfRunner } from "./repair-publish-cf";
-export type PublishTarget = "pre" | "production";
+export type PublishTarget = "pre" | "production" | "rehearsal";
 export type PublishTargetOptions = {
   target: string;
   bucket: string;
@@ -17,8 +17,12 @@ export type ResolvedPublishTarget = { target: PublishTarget; bucket: string; gen
 
 const IDENTITY_KEY = "_meta/bucket-identity.json";
 function bucketForTarget(target: string): string {
-  assert(target === "pre" || target === "production", "--target must be pre or production");
-  return target === "pre" ? "gitstarclub-data-pre" : "gitstarclub-data-prod";
+  assert(target === "pre" || target === "production" || target === "rehearsal", "--target must be pre or production or rehearsal");
+  return target === "pre" ? "gitstarclub-data-pre" : target === "production" ? "gitstarclub-data-prod" : "gitstarclub-data-rehearsal";
+}
+
+function confirmationForTarget(target: PublishTarget, generation: string, bucket: string): string {
+  return target === "rehearsal" ? `rehearse ${generation} in ${bucket}` : `publish ${generation} to ${bucket}`;
 }
 
 /** All refusals throw: callers must exit nonzero and never continue to writes. */
@@ -28,9 +32,9 @@ export async function resolvePublishTarget(options: PublishTargetOptions, runner
   const expectedBucket = bucketForTarget(target);
   assert(bucket === expectedBucket, `--target ${target} requires bucket ${expectedBucket}`);
   assertBootstrapGeneration(generation);
-  if (target === "production") {
-    const confirmation = `publish ${generation} to ${expectedBucket}`;
-    assert(confirmProduction === confirmation, `Production requires exact --confirm-production "${confirmation}"`);
+  if (target !== "pre") {
+    const confirmation = confirmationForTarget(target as PublishTarget, generation, expectedBucket);
+    assert(confirmProduction === confirmation, `${target === "production" ? "Production" : "Rehearsal"} requires exact --confirm-production "${confirmation}"`);
   } else {
     assert(confirmProduction === undefined, "--confirm-production is only valid with --target production");
   }
@@ -61,7 +65,7 @@ export function formatRollbackCommand(target: PublishTarget, recoveryGenerationI
   const bucket = bucketForTarget(target);
   assertBootstrapGeneration(recoveryGenerationId);
   const command = `bun --no-env-file web/scripts/repair-publish.ts --target ${target} --bucket ${bucket} --rollback ${recoveryGenerationId}`;
-  return target === "production"
-    ? `${command} --confirm-production "publish ${recoveryGenerationId} to ${bucket}"`
+  return target !== "pre"
+    ? `${command} --confirm-production "${confirmationForTarget(target, recoveryGenerationId, bucket)}"`
     : command;
 }
