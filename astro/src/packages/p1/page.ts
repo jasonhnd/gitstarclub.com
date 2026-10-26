@@ -19,7 +19,7 @@ export async function loadPage(data: PublishedData, kind: PageKind, localeValue 
       const canonical = new URL(String(metadata.alternates?.canonical));
       const title = typeof metadata.title === "string" ? metadata.title : (metadata.title as { absolute: string }).absolute;
       const citation = { pageTitle: title, canonicalUrl: canonical.href };
-      const rendered = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true })
+      const rendered = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true, releaseId: data.publication.views?.version ?? null })
         : kind === "rankings" ? RankingsPageView({ locale, ...citation })
         : kind === "year" ? RankingsYearPageView({ locale, year, ...citation }) : RankingsPeriodPageView({ locale, year, period, ...citation }));
       const prefix = locale === "en" ? "" : `/${locale}`;
