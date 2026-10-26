@@ -22,3 +22,10 @@ Show the existing About this data disclosure on every English and localized repo
 - English and Japanese repository pages render the disclosure using current page metadata and the captured release identity.
 - Tests verify its placement, data layer, and citation inputs.
 - Capture 1440 px and 390 px screenshots for English and Japanese repository pages.
+
+## Rework round 1
+
+- Resolve every committed conflict marker while preserving the trusted-archive base and this issue's repository placement.
+- Add English and Japanese repository render assertions to the collected unit suite, including disclosure placement, history layer, publication metadata, release identity and the citation element itself.
+- Verify the complete Astro suite, built repository routes and existing static/build checks on the current branch. Keep temporary artifacts under the card directory in this repository; do not create a verification clone or switch branches.
+- Acceptance: no conflict markers, a clean diff check against `origin/feat/trusted-archive-v01`, and regression tests that fail if the repository disclosure is removed.
