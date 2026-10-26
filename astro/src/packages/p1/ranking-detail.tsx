@@ -122,7 +122,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
   const previous = previousYear ? { href: href(previousYear.href), label: previousYear.label, eyebrow: t.common.previous } : null;
   const next = nextYear ? { href: href(nextYear.href), label: nextYear.label, eyebrow: t.common.next } : null;
 
-  return (
+  return { asOf, body: (
     <>
       {rankingDetailStructuredData({ locale, path: routePath, label: String(year), rows: rankRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -188,7 +188,7 @@ export async function RankingsYearPageView({ locale, year: yearValue, now = new 
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
 export async function RankingsPeriodPageView({ locale, year: yearValue, period: periodValue }: { locale: Locale; year: string; period: string }) {
@@ -235,7 +235,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
   const tableLabels = repositoryTableLabels(t);
   const monthNav = await monthNavigation(locale, t, year, month, href);
 
-  return (
+  return { asOf, body: (
     <>
       {rankingDetailStructuredData({ locale, path: routePath, label: pageLabel, rows: flowRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -318,7 +318,7 @@ async function MonthRankings({ locale, t, year, month }: { locale: Locale; t: Di
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
 async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict; year: number; week: number }) {
@@ -341,7 +341,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
   const weekNav = await weekNavigation(t, year, week, href);
   const sourceNote = weeklyRankSourceNote(data.flow.meta, t.common);
 
-  return (
+  return { asOf, body: (
     <>
       {rankingDetailStructuredData({ locale, path: routePath, label: period, rows: rankRows, dateModified }).map((data, index) => <JsonLd key={index} data={data} />)}
       <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[72rem] flex-1 py-[clamp(1.75rem,4.5vw,4rem)] ${PAD_X}`}>
@@ -414,7 +414,7 @@ async function WeekRankings({ locale, t, year, week }: { locale: Locale; t: Dict
         <FaqBlock items={faqItems} path={routePath} locale={language} heading={t.common.faqHeading} />
       </main>
     </>
-  );
+  ) };
 }
 
 function loadPageRankingData(window: "year" | "month" | "week", period: string, locale: Locale) {

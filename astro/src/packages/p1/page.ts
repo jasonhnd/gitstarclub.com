@@ -18,7 +18,8 @@ export async function loadPage(data: PublishedData, kind: PageKind, localeValue 
         : kind === "year" ? generateRankingYearMetadata(locale, year) : generateRankingPeriodMetadata(locale, { year, period }));
       const rendered = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true })
         : kind === "rankings" ? RankingsPageView({ locale })
-        : { body: await (kind === "year" ? RankingsYearPageView({ locale, year }) : RankingsPeriodPageView({ locale, year, period })), asOf: undefined });
+        : kind === "year" ? RankingsYearPageView({ locale, year })
+        : RankingsPeriodPageView({ locale, year, period }));
       const canonical = new URL(String(metadata.alternates?.canonical));
       const prefix = locale === "en" ? "" : `/${locale}`;
       const canonicalPath = canonical.pathname.slice(prefix.length) || "/";

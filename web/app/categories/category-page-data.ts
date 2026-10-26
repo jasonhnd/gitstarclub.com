@@ -5,7 +5,8 @@ import {
   categoryId,
   type CategoryDimension,
 } from "@/lib/categories/rules";
-import type { CategoryRegistry, CategoryRegistryEntry } from "@/lib/contracts";
+import type { CategoryRegistry, CategoryRegistryEntry, Meta } from "@/lib/contracts";
+import { resolveDataAsOfLabel } from "@/lib/geo-capsules";
 
 export const CATEGORY_INDEX_PREVIEW_LIMIT = 10;
 export const RELATED_PUBLIC_CATEGORY_LIMIT = 8;
@@ -22,6 +23,16 @@ export function categoryPath(dimension: string, slug?: string): string {
 
 export function categoryDetailPagePath(dimension: string, slug: string, page = 1): string {
   return page <= 1 ? categoryPath(dimension, slug) : `${categoryPath(dimension, slug)}/page/${page}`;
+}
+
+/** Index and dimension capsules prefer the registry timestamp, then global metadata. */
+export function categoryCatalogAsOf(registry: Pick<CategoryRegistry, "generated_at">, meta: Meta | null | undefined, locale: string) {
+  return resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+}
+
+/** Detail capsules prefer the category ranking timestamp, then the registry, then global metadata. */
+export function categoryDetailAsOf(rankGeneratedAt: string | null | undefined, registry: Pick<CategoryRegistry, "generated_at">, meta: Meta | null | undefined, locale: string) {
+  return resolveDataAsOfLabel(rankGeneratedAt, registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
 }
 
 export function fallbackRegistry(): CategoryRegistry {

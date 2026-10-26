@@ -105,11 +105,15 @@ without the existing design-system exception policy.
 The seven dictionaries remain import-only under `web/lib/i18n/dictionaries/`.
 Route locale selects shell, body, metadata, FAQ and JSON-LD on the server;
 canonical URLs and hreflang/x-default keep the existing localized matrix.
-`Layout.astro` uses the resolved home or all-time rankings summary date for the
-footer. Home prefers snapshot metadata, then weekly/monthly ranking metadata;
-all-time rankings prefer repository/organization ranking metadata, then snapshot
-metadata. Pages without a resolved summary date fall back to global metadata.
-The same localized date formatter serves summaries and footers.
+`Layout.astro` uses each page's resolved summary date for the footer. Home and
+Pulse prefer snapshot metadata, then weekly and monthly ranking metadata.
+All-time rankings prefer repository and organization ranking metadata, then
+snapshot metadata. Year and period rankings prefer that period's ranking
+metadata. Category index and dimension pages prefer the category registry
+timestamp, then global metadata. Category detail pages prefer the category
+ranking timestamp, then the registry, then global metadata. Pages without a
+resolved summary date fall back to global metadata. The same localized date
+formatter serves summaries and footers.
 `Layout.astro` owns social defaults; package repo/ranking endpoints reuse the
 existing deterministic 1200 x 630 renderer and packaged fonts/Wasm.
 

@@ -17,7 +17,7 @@ import { CATEGORY_DIMENSIONS, type CategoryDimension } from "@/lib/categories/ru
 import type { CategoryDimensionRegistry, CategoryRegistry } from "@/lib/contracts";
 import { getCategoryAllTimePage, getCategoryRegistry, getMeta, getReposLookupDaily, joinRepoRank } from "@/lib/data";
 import { formatInteger } from "@/lib/format";
-import { resolveDataAsOfLabel, resolveDataAsOfValue } from "@/lib/geo-capsules";
+import { resolveDataAsOfValue } from "@/lib/geo-capsules";
 import { getDictionary, type Locale } from "@/lib/i18n";
 import { localizedPath, toBcp47Locale } from "@/lib/i18n/routing";
 import { collectionLd, datasetLd, datasetRef, itemListLd } from "@/lib/jsonld";
@@ -28,6 +28,8 @@ import {
   categoryDetailPagePath,
   isThinCategoryCount,
   relatedPublicCategories,
+  categoryCatalogAsOf,
+  categoryDetailAsOf,
   categoryPath,
   fallbackRegistry,
   findCategory,
@@ -205,7 +207,7 @@ export async function CategoriesPageView({ locale }: { locale: Locale }) {
     dimension: localizedDimensionLabel(locale, category.dimension),
     path: href(categoryPath(category.dimension, category.slug)),
   }));
-  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = categoryCatalogAsOf(registry, meta, locale);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
     name: text.categoryIndexDatasetName,
@@ -313,7 +315,7 @@ export async function CategoryDimensionPageView({ locale, dimension }: { locale:
   const href = (path: string) => localizedPath(locale, path);
   const categories = entry.categories.filter((category) => category.public);
   const categoryRows = categories.map((category) => ({ ...category, dimension: entryLabel, path: href(categoryPath(category.dimension, category.slug)) }));
-  const asOf = resolveDataAsOfLabel(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = categoryCatalogAsOf(registry, meta, locale);
   const dateModified = resolveDataAsOfValue(registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month);
   const dataset = datasetLd({
     name: fill(text.categoryDimensionDatasetName, { label: entryLabel }),
@@ -415,7 +417,7 @@ export async function CategoryDetailPageView({ locale, dimension, slug, page }: 
   const siblingCategories = relatedPublicCategories(dimensionEntry?.categories ?? [], category.id);
   const thin = isThinCategoryCount(category.count);
   const dimensionLabel = localizedDimensionLabel(locale, dimension, dimensionEntry?.label ?? dimension);
-  const asOf = resolveDataAsOfLabel(rank?.meta.generated_at, registry.generated_at, meta?.generated_at, meta?.backfilled_at, meta?.folded_through?.month, { locale });
+  const asOf = categoryDetailAsOf(rank?.meta.generated_at, registry, meta, locale);
   const pagePath = categoryDetailPagePath(dimension, slug, page);
   const routePath = localizedPath(locale, pagePath);
   const href = (path: string) => localizedPath(locale, path);
