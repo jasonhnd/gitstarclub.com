@@ -8,6 +8,8 @@ Category pages use the shared `AboutThisDataContent` renderer inside their stati
 
 Compare pages mount the disclosure after the answer capsule and before the FAQ, with the history-curve layer, and load the Copy enhancement from the page script.
 
+Repository pages render the shared `AboutThisDataContent` after the answer capsule and before repository history and the FAQ. Their Astro page entry loads the Copy enhancement.
+
 Pass `locale`, `dictionary`, `meta`, `releaseId`, `layer`, `pageTitle` and the absolute `canonicalUrl`. Read `meta` from the current request's published data and `releaseId` from that same request's captured `publication.views.version`. Metadata does not itself contain the release identifier. Do not fetch the latest publication again while rendering.
 
 `layer` is one of `currentTotals`, `periodGains` or `historyCurve`. Each selects a translated layer label, method sentence and stable section of localized `/about`. The date comes from `meta.generated_at`, with `backfilled_at` as the bootstrap fallback. It is formatted in UTC and is the publication metadata date, not a promise of complete observations through that date. Coverage uses only `active_repo_count`, never historical membership or visible rows. Missing values are explicitly unavailable; zero is preserved.
@@ -18,4 +20,4 @@ The release link intentionally targets `/releases/<id>` before those pages exist
 
 Locale copy lives in the existing `aboutData` dictionary section for all seven locales. Acceptance artifacts are generated from those dictionaries; no translated documentation is maintained separately.
 
-Run the render tests as part of `cd astro && bun run test`. After `bun run build:pre`, run `bun tests/about-data/browser.ts` with card-local `KANBAN_TMP` and `TMPDIR`. That isolated fixture generates the seven-locale copy table and before/after English/Japanese screenshots at 1440 and 390 pixels, and verifies keyboard operation, clipboard success/failure, multiple instances, no-script behavior and accessibility. It adds no site route.
+Run the render tests as part of `cd astro && bun run test`. That suite also collects `tests/p2/data.test.ts`, which renders English and Japanese repository pages and verifies disclosure placement, the history curve layer, captured metadata and release, and the cite-as element. After `bun run build:pre`, run `bun tests/about-data/browser.ts` with card-local `KANBAN_TMP` and `TMPDIR`. That isolated fixture generates the seven-locale copy table and before/after English/Japanese screenshots at 1440 and 390 pixels, and verifies keyboard operation, clipboard success/failure, multiple instances, no-script behavior and accessibility. It adds no site route.

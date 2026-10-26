@@ -1,4 +1,4 @@
-import { type CategoryRegistry, type Meta, type ReposLookup } from "../../../../web/lib/contracts";
+import { type CategoryRegistry, type Meta, type ReposLookup, type ViewsPointer } from "../../../../web/lib/contracts";
 import { getDictionary, type Dict, type Locale } from "../../../../web/lib/i18n";
 import { localizedPath, toBcp47Locale } from "../../../../web/lib/i18n/routing";
 import { githubRepoFullName } from "../../../../web/lib/public-params";
@@ -15,6 +15,7 @@ type Data = ReturnType<typeof pageData>;
 export type RepositoryPage = {
   locale: Locale; t: Dict; repo: RepoPageEntity;
   lookup: ReposLookup | null; registry: CategoryRegistry | null; meta: Meta | null;
+  releaseId: ViewsPointer["version"] | null;
 };
 export type RepositoryResolution = { kind: "missing" } | { kind: "redirect"; location: string } | { kind: "page"; page: RepositoryPage };
 
@@ -34,7 +35,7 @@ export function loadRepository(data: Data, locale: Locale, owner: string, name: 
     ]);
     if (!repo) return { kind: "missing" };
     // The current Cloudflare page deliberately skips category assignment fan-out.
-    return { kind: "page", page: { locale, t, repo, lookup, registry, meta } };
+    return { kind: "page", page: { locale, t, repo, lookup, registry, meta, releaseId: data.publication.views?.version ?? null } };
   });
 }
 

@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { getDictionary } from "../../src/lib/i18n";
+import { getDictionary, LOCALES } from "../../src/lib/i18n";
 import type { R2Bucket } from "../../../web/lib/storage/r2-binding-store";
 import { startWorker } from "../../scripts/local-worker";
 import { paths, repositoryFixtures } from "./fixture";
@@ -13,6 +13,22 @@ try {
     assert.equal(response.status, 200, path);
     const html = await response.text();
     assert.ok(html.includes('id="main"'), path);
+    const locale = LOCALES.find((candidate) => candidate !== "en" && path.startsWith(`/${candidate}/`)) ?? "en";
+    const pageDictionary = await getDictionary(locale);
+    const aboutData = html.indexOf(pageDictionary.aboutData.heading);
+    const faq = html.indexOf(pageDictionary.common.faqHeading);
+    assert.ok(aboutData >= 0 && faq > aboutData, `About this data appears before the FAQ at ${path}`);
+    assert.ok(aboutData > html.indexOf('data-testid="answer-capsule"'), `About this data follows the answer capsule at ${path}`);
+    if (locale === "en" || locale === "ja") {
+      const dictionary = await getDictionary(locale);
+      const fullName = path.split("/").slice(-2).join("/");
+      assert.ok(html.includes(`href="${locale === "en" ? "" : "/ja"}/about#history-curve"`), `${locale} selects the history curve layer`);
+      assert.ok(html.includes('dateTime="2026-07-17"'), `${locale} uses the current publication metadata date`);
+      assert.ok(html.includes("fixture-v1"), `${locale} uses the captured publication release`);
+      assert.ok(html.includes(`https://gitstarclub.com${path}`), `${locale} citation uses this page's canonical URL`);
+      assert.ok(html.includes(`${dictionary.aboutData.methodHistoryCurve}`), `${locale} selects the history curve method`);
+      assert.ok(html.includes(`<title>${fullName} — ${dictionary.repo.metaTitleSuffix.replaceAll("&", "&amp;")} · GitStarClub</title>`), `${locale} citation title matches the page title`);
+    }
     assert.ok(!/<astro-island[^>]+component-url="[^"]*(?:repo|StarCurve)/i.test(html), "Repository body/charts must not hydrate");
     if (path.endsWith("/daily")) {
       assert.ok(html.includes('class="curve-line"'));
