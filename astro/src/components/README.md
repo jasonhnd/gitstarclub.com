@@ -6,6 +6,8 @@ Organization pages (`/o/<login>`, every locale) render `AboutThisDataContent` in
 
 Category pages use the shared `AboutThisDataContent` renderer inside their static React view so it can sit between the answer capsule and FAQ. Their Astro page wrapper imports the same Copy enhancement.
 
+Compare pages mount the disclosure after the answer capsule and before the FAQ, with the history-curve layer, and load the Copy enhancement from the page script.
+
 Pass `locale`, `dictionary`, `meta`, `releaseId`, `layer`, `pageTitle` and the absolute `canonicalUrl`. Read `meta` from the current request's published data and `releaseId` from that same request's captured `publication.views.version`. Metadata does not itself contain the release identifier. Do not fetch the latest publication again while rendering.
 
 `layer` is one of `currentTotals`, `periodGains` or `historyCurve`. Each selects a translated layer label, method sentence and stable section of localized `/about`. The date comes from `meta.generated_at`, with `backfilled_at` as the bootstrap fallback. It is formatted in UTC and is the publication metadata date, not a promise of complete observations through that date. Coverage uses only `active_repo_count`, never historical membership or visible rows. Missing values are explicitly unavailable; zero is preserved.
