@@ -19,8 +19,9 @@ export function assertAllowedCfPreviewOrigin(value = DEFAULT_CF_PREVIEW_ORIGIN) 
 }
 
 /** Validate evaluated typed configuration, never a textual approximation of bindings. */
-export function assertHostContract(worker, mode) {
+export function assertHostContract(worker, mode, host = "web") {
   const errors = [];
+  const astro = host === "astro";
   const pre = mode === "pre";
   const name = pre ? PREVIEW_WORKER_NAME : PRODUCTION_WORKER_NAME;
   const bucket = pre ? "gitstarclub-data-pre" : "gitstarclub-data-prod";
@@ -36,14 +37,16 @@ export function assertHostContract(worker, mode) {
   };
   const check = (condition, message) => { if (!condition) errors.push(`${mode}: ${message}`); };
   check(worker.name === name, "Worker name");
-  check(worker.entrypoint === "../workers/gitstarclub-web/src/index.ts", "custom entrypoint");
+  check(worker.entrypoint === (astro ? "src/worker.ts" : "../workers/gitstarclub-web/src/index.ts"), "custom entrypoint");
   check(worker.compatibilityDate === "2026-09-17", "compatibility date");
   check(JSON.stringify(worker.compatibilityFlags) === JSON.stringify(["nodejs_compat", "global_fetch_strictly_public"]), "compatibility flags");
   check(worker.observability?.enabled === true, "observability");
   check(worker.workersDev === pre && worker.previewUrls === pre, "public endpoint policy");
   check(!worker.routes && !worker.domains && !worker.exports, "no routes, domains or database exports");
   check(worker.assets?.htmlHandling === "none" && worker.assets?.notFoundHandling === "none", "asset handling");
-  check(JSON.stringify(worker.assets?.runWorkerFirst) === JSON.stringify(["/*", "!/_next/static/*", "!/*/_next/static/*", "!/assets/*"]), "Worker-first private assets");
+  check(JSON.stringify(worker.assets?.runWorkerFirst) === JSON.stringify(astro
+    ? ["/*", "!/_astro/*", "!/assets/*"]
+    : ["/*", "!/_next/static/*", "!/*/_next/static/*", "!/assets/*"]), "Worker-first private assets");
   const expectedTriggers = [
     { type: "queue", name: queue, maxBatchSize: 1, maxRetries: 2 },
     ...(pre && !PREVIEW_CRONS_PAUSED
@@ -55,7 +58,8 @@ export function assertHostContract(worker, mode) {
   for (const [key, value] of Object.entries(vars)) check(env[key]?.type === "text" && env[key]?.value === value, `var ${key}`);
   for (const [key, expected] of Object.entries({
     ASSETS: { type: "assets" }, DATA: { type: "r2", name: bucket }, MEDIA: { type: "r2", name: "gitstarclub-assets" },
-    JOBS: { type: "queue", name: queue }, WORKER_SELF_REFERENCE: { type: "worker", worker: name }, GSC_CACHE: { type: "kv" },
+    JOBS: { type: "queue", name: queue }, WORKER_SELF_REFERENCE: { type: "worker", worker: name },
+    GSC_CACHE: { type: "kv", id: pre ? "4c3107414bad4a0386fedfcf96dde6e2" : "e25483e6f01d4c68a7b014906f247a37" },
   })) check(JSON.stringify(env[key]) === JSON.stringify(expected), `binding ${key}`);
   const extra = Object.keys(env).filter((key) => !(key in vars) && !["ASSETS", "DATA", "MEDIA", "JOBS", "WORKER_SELF_REFERENCE", "GSC_CACHE"].includes(key));
   check(extra.length === 0, `undeclared bindings/vars ${extra.join(",")}`);
@@ -84,14 +88,20 @@ export function commandPolicy(scripts, ciSource) {
 export async function assertRepositoryCfCiGates(root) {
   const { hostWorker } = await import(pathToFileURL(resolve(root, "web/cloudflare.config.ts")).href);
   const { aggregateImportEnabled } = await import(pathToFileURL(resolve(root, "web/lib/aggregate-history/policy.ts")).href);
+  const { astroHostWorker } = await import(pathToFileURL(resolve(root, "astro/host-contract.ts")).href);
   const ci = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const delivery = readFileSync(resolve(root, ".delivery.yml"), "utf8");
   const pkg = JSON.parse(readFileSync(resolve(root, "web/package.json"), "utf8"));
-  const errors = ["pre", "production"].flatMap((mode) => assertHostContract(hostWorker(mode), mode));
+  const errors = ["pre", "production"].flatMap((mode) => [
+    ...assertHostContract(hostWorker(mode), mode),
+    ...assertHostContract(astroHostWorker(mode), mode, "astro").map((error) => `Astro ${error}`),
+  ]);
   for (const mode of ["pre", "production"]) {
-    const env = Object.fromEntries(Object.entries(hostWorker(mode).env).filter(([, value]) => value.type === "text").map(([key, value]) => [key, value.value]));
-    if (aggregateImportEnabled(env) !== (mode === "pre")) errors.push(`${mode}: aggregate import environment gate`);
-    if (aggregateImportEnabled({ ...env, R2_BUCKET: "gitstarclub-data-prod" })) errors.push(`${mode}: aggregate import must refuse a production bucket`);
+    for (const [host, factory] of [["web", hostWorker], ["astro", astroHostWorker]]) {
+      const env = Object.fromEntries(Object.entries(factory(mode).env).filter(([, value]) => value.type === "text").map(([key, value]) => [key, value.value]));
+      if (aggregateImportEnabled(env) !== (mode === "pre")) errors.push(`${host} ${mode}: aggregate import environment gate`);
+      if (aggregateImportEnabled({ ...env, R2_BUCKET: "gitstarclub-data-prod" })) errors.push(`${host} ${mode}: aggregate import must refuse a production bucket`);
+    }
   }
   errors.push(...commandPolicy(pkg.scripts, ci));
   if (!/checks:\s*\[static, production-build\]/.test(delivery)) errors.push("Required checks must remain static and production-build");

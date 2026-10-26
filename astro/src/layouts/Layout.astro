@@ -1,0 +1,48 @@
+---
+import "../styles/globals.css";
+import { getDictionary, LOCALES, type Locale } from "../../../web/lib/i18n";
+import { localizedPath, toHreflang, toOpenGraphLocale } from "../../../web/lib/i18n/routing";
+import { THEME_INIT_SCRIPT } from "../../../web/lib/theme-script";
+import { siteIndexable } from "../lib/mode";
+import Chrome from "../components/Chrome.astro";
+import Footer from "../components/Footer.astro";
+interface Props { locale: Locale; canonicalPath: string; title: string; description: string; tag?: string; absoluteTitle?: boolean; ogImage?: string; ogUrl?: string }
+const { locale, canonicalPath, title, description, tag, absoluteTitle = false, ogImage = "/opengraph-image", ogUrl } = Astro.props;
+const t = await getDictionary(locale);
+const origin = "https://gitstarclub.com";
+const canonical = new URL(localizedPath(locale, canonicalPath), origin).href;
+const image = new URL(ogImage, origin).href;
+---
+<html lang={toHreflang(locale)}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{absoluteTitle ? title : `${title} · GitStarClub`}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content={siteIndexable ? "index, follow" : "noindex, nofollow"} />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="GitStarClub" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfd" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121316" />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="x-default" href={new URL(canonicalPath, origin).href} />
+    {LOCALES.map((lang) => <link rel="alternate" hreflang={toHreflang(lang)} href={new URL(localizedPath(lang, canonicalPath), origin).href} />)}
+    <meta property="og:url" content={ogUrl ?? canonical} /><meta property="og:title" content={title} />
+    <meta property="og:description" content={description} /><meta property="og:locale" content={toOpenGraphLocale(locale)} />
+    <meta property="og:image" content={image} />
+    <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} /><meta name="twitter:image" content={image} />
+    <script is:inline set:html={THEME_INIT_SCRIPT} />
+    <slot name="head" />
+  </head>
+  <body class="flex min-h-svh flex-col">
+    <a href="#main" class="skip-link">{t.a11y.skipToContent}</a>
+    <div class="contents">
+      <Chrome locale={locale} canonicalPath={canonicalPath} dictionary={t} tag={tag} />
+      <slot />
+      <Footer locale={locale} canonicalPath={canonicalPath} dictionary={t} />
+    </div>
+  </body>
+</html>

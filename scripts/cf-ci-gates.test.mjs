@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { hostWorker } from "../web/cloudflare.config.ts";
+import { astroHostWorker } from "../astro/host-contract.ts";
 import { buildVars } from "../web/host-contract.mjs";
 import { assertHostContract, assertAllowedCfPreviewOrigin, assertRepositoryCfCiGates, commandPolicy, PREVIEW_CRONS_PAUSED } from "./cf-ci-gates.mjs";
 const pkg = JSON.parse(readFileSync(new URL("../web/package.json", import.meta.url), "utf8"));
@@ -9,6 +10,16 @@ const pkg = JSON.parse(readFileSync(new URL("../web/package.json", import.meta.u
 describe("typed host contract", () => {
   for (const mode of ["pre", "production"]) {
     test(`${mode} preserves every binding, public var and authorized trigger`, () => assert.deepEqual(assertHostContract(hostWorker(mode), mode), []));
+    test(`${mode} rejects the other mode's page-cache namespace and an unpinned binding`, () => {
+      for (const factory of [hostWorker, astroHostWorker]) {
+        const worker = structuredClone(factory(mode));
+        const host = factory === hostWorker ? "web" : "astro";
+        for (const binding of [factory(mode === "pre" ? "production" : "pre").env.GSC_CACHE, { type: "kv" }]) {
+          const changed = { ...worker, env: { ...worker.env, GSC_CACHE: binding } };
+          assert.ok(assertHostContract(changed, mode, host).includes(`${mode}: binding GSC_CACHE`));
+        }
+      }
+    });
     for (const mutate of [
       (w) => { w.name = "wrong"; }, (w) => { w.env.DATA.name = "wrong"; },
       (w) => { w.env.WORKER_SELF_REFERENCE.worker = "other"; }, (w) => { w.env.JOBS.name = "wrong"; },
@@ -73,4 +84,30 @@ describe("typed host contract", () => {
   test("repository configuration and required job names agree", async () => {
     await assertRepositoryCfCiGates(new URL("../", import.meta.url).pathname);
   });
+});
+
+describe("Astro steady-state host contract", () => {
+  for (const mode of ["pre", "production"]) {
+    test(`${mode} validates the Astro entry and asset paths`, () => {
+      assert.deepEqual(assertHostContract(astroHostWorker(mode), mode, "astro"), []);
+    });
+    test(`${mode} rejects changed resources, first-publication flags and schedules`, () => {
+      const mutations = [
+        (w) => { w.env.DATA.name = "wrong"; },
+        (w) => { w.entrypoint = "wrong.ts"; },
+        (w) => { w.assets.runWorkerFirst = ["/*"]; },
+        (w) => { w.triggers.push({ type: "scheduled", schedule: "0 6 * * 7" }); },
+        ...["WORKFLOW_COLD_START", "PREFLIGHT_RELAX_EMPTY_SHARDS", "WORKFLOW_FIXTURE"]
+          .map((flag) => (w) => { w.env[flag] = { type: "text", value: "1" }; }),
+      ];
+      if (mode === "pre") for (const schedule of ["0 3 * * *", "0 4 * * SUN", "0 6 * * SUN"]) {
+        mutations.push((w) => { w.triggers = w.triggers.filter((t) => t.schedule !== schedule); });
+      }
+      for (const mutate of mutations) {
+        const worker = structuredClone(astroHostWorker(mode));
+        mutate(worker);
+        assert.ok(assertHostContract(worker, mode, "astro").length, String(mutate));
+      }
+    });
+  }
 });

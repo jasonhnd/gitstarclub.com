@@ -1,3 +1,11 @@
+---
+owner: workflow pipeline
+status: historical
+last_reviewed: 2026-10-25
+source_of_truth_for:
+  - issue 743 preview monthly history diagnosis
+---
+
 # Preview empty monthly history: issue 743
 
 Evidence baseline: `8071b170a9564bb58668f92a4e72c92fb41a2530` (`pre`).

@@ -3,13 +3,13 @@ import * as github from "@/lib/github";
 import * as source from "@/lib/data/source";
 import * as indexnow from "@/lib/indexnow";
 import { buildIndexNowPayloads, workflowPublishCanonicalPaths } from "@/lib/indexnow";
-import { WorkflowLease, WorkflowManifest, WorkflowValidation, type WhitelistSnapshot } from "@/lib/contracts";
+import { WorkflowLease, WorkflowManifest, WorkflowValidation } from "@/lib/contracts";
 import { successorJobAfterRefreshStep, successorJobFromResponseHeaders } from "@/lib/workers-host/queue-advance";
-import { repoBucket, REPO_BUCKETS } from "../buckets";
+import { REPO_BUCKETS } from "../buckets";
 import { startRefreshWorkflowRoute } from "../start";
 import { validateVersion } from "../steps/validate";
 import { runPublishStep } from "../steps/publish";
-import { installWorkflowHarness, SUBREQUEST_LIMIT_ERROR, TEST_NOW, TEST_RUN, workflowSeed, type FullJob } from "../test-support";
+import { installWorkflowHarness, SUBREQUEST_LIMIT_ERROR, TEST_NOW, TEST_RUN, workflowCompletedMetadataSeed, type FullJob } from "../test-support";
 import { nextRefreshJob } from "./graph";
 import { firstRefreshJob } from "./types";
 import { withStepRetry } from "./retry";
@@ -22,24 +22,6 @@ let afterMetadata: Record<string, string>;
 let publication: Boundary;
 const counts = new Map<string, { hops: number; max: number; operations: Record<string, number> }>();
 const publishCounts: Array<{ page: number; total: number; entityReads: number; operations: Record<string, number> }> = [];
-
-/** Completed real-format metadata avoids unrelated GitHub pacing in the budget test. */
-function completedMetadataSeed(): Record<string, string> {
-  const seed = workflowSeed(REPOS, REPOS);
-  const snapshot = JSON.parse(seed["canonical/v2/whitelist/discovery.json"]!) as WhitelistSnapshot;
-  seed[`canonical/v2/whitelist/${TEST_RUN}.json`] = JSON.stringify({ ...snapshot, run_id: TEST_RUN });
-  seed["ops/workflows/latest-unpublished-whitelist.json"] = JSON.stringify({ run_id: TEST_RUN, count: REPOS, recorded_at: TEST_NOW });
-  for (let bucket = 0; bucket < REPO_BUCKETS; bucket++) {
-    const fetched = Object.fromEntries(snapshot.entries.filter((row) => repoBucket(row.id) === bucket).map((row) => [String(row.id), {
-      owner: row.owner, owner_type: "Organization", name: row.name, full_name: row.full_name,
-      current_stars: row.stars, description: null, language: "TypeScript", languages: [], topics: [], created_at: "2025-01-01", is_archived: false,
-    }]));
-    seed[path(`metadata-${bucket}.json`)] = JSON.stringify({ v: 1, bucket, fetched, skipped: [], pending_pages: [], transient_attempts: 0, last_error: null });
-  }
-  // A large orphan version forces GC to yield rather than draining every batch.
-  for (let id = 0; id < REPOS; id++) seed[`views/refresh-2026-08-01/entity/repo/${id}.json`] = "{}";
-  return seed;
-}
 
 async function exhaust(h: ReturnType<typeof installWorkflowHarness>, job: FullJob, recording = false) {
   const limit = recording ? 1 : 8;
@@ -63,7 +45,7 @@ async function exhaust(h: ReturnType<typeof installWorkflowHarness>, job: FullJo
 
 describe("refresh subrequest budget at 5,669 repositories and owners", () => {
   beforeAll(async () => {
-    const h = installWorkflowHarness(completedMetadataSeed(), { INDEXNOW_ENABLED: "1" });
+    const h = installWorkflowHarness(workflowCompletedMetadataSeed(REPOS), { INDEXNOW_ENABLED: "1" });
     try {
       let job = firstRefreshJob(TEST_RUN) as FullJob | null;
       for (let hop = 0; job && hop < 1000; hop++) {

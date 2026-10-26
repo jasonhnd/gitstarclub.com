@@ -24,7 +24,10 @@ export function hostWorker(mode: string, shell: Record<string, string | undefine
       MEDIA: bindings.r2({ name: "gitstarclub-assets" }),
       JOBS: bindings.queue({ name: target.queue }),
       WORKER_SELF_REFERENCE: bindings.worker({ worker: target.name }),
-      GSC_CACHE: bindings.kv(),
+      // Separate existing page-cache namespaces per mode; cf accepts KV ids, not titles.
+      GSC_CACHE: bindings.kv(mode === "production"
+        ? { id: "e25483e6f01d4c68a7b014906f247a37" }
+        : mode === "pre" ? { id: "4c3107414bad4a0386fedfcf96dde6e2" } : {}),
     },
     triggers: [
       triggers.queue({ name: target.queue, maxBatchSize: 1, maxRetries: 2 }),

@@ -1,0 +1,10 @@
+@source "./**/*.{astro,tsx}";
+@source "../../../../web/app/_explore/AnswerCapsule.tsx";
+@source "../../../../web/app/_explore/Breadcrumbs.tsx";
+@source "../../../../web/app/_explore/FaqBlock.tsx";
+@source "../../../../web/app/_explore/PageHero.tsx";
+@source "../../../../web/app/_explore/RelatedPages.tsx";
+@source "../../../../web/app/_explore/ShareButton.tsx";
+@source "../../../../web/app/_explore/ShareableSnippet.tsx";
+@source "../../../../web/app/_explore/SnippetActions.tsx";
+@source "../../../../web/app/_explore/StarCurve.tsx";
