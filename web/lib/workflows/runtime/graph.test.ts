@@ -7,6 +7,19 @@ function full(name: RefreshStepJob["name"], cursor: RefreshStepJob["cursor"] = {
 }
 
 describe("refresh step graph", () => {
+  test("sums completed bucket skips once and carries the summary through publication", () => {
+    const start = nextRefreshJob(full("rename"), { name: "rename" }, 2)!;
+    expect(start.cursor.metadata?.skipped).toBe(0);
+    const retry = nextRefreshJob(start, { name: "metadata", retryMetadata: true, skipped_count: 100 }, 2)!;
+    expect(retry.cursor.metadata?.skipped).toBe(0);
+    const next = nextRefreshJob(retry, { name: "metadata", skipped_count: 2, skipped: [1, 2] }, 2)!;
+    expect(next.cursor.metadata?.skipped).toBe(2);
+    const fold = nextRefreshJob(next, { name: "metadata", skipped: [3, 4, 5] }, 2)!;
+    expect(fold).toMatchObject({ name: "fold", cursor: { metadata: { skipped: 5 } } });
+    const publish = nextRefreshJob(full("validate", fold.cursor), { name: "validate" })!;
+    expect(publish).toMatchObject({ name: "publish", cursor: { metadata: { skipped: 5 } } });
+  });
+
   test("starts a full refresh at startRun", () => {
     expect(firstRefreshJob("refresh-1")).toEqual({
       v: 1,

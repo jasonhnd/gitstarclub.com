@@ -15,8 +15,11 @@ import {
   type PublicationDeps,
 } from "@/lib/workflows/publication-core";
 import { WorkflowLeaseOwnershipError } from "@/lib/workflows/lease";
+import { RELEASES_PATH, Releases } from "@/lib/contracts";
+import { MemoryObjectStore } from "@/lib/storage";
+import { appendReleaseRecord } from "@/lib/workflows/releases";
 
-type WriteName = "intent" | "pointer" | "recovery" | "whitelist";
+type WriteName = "intent" | "pointer" | "recovery" | "whitelist" | "releases";
 type Failure = { write: WriteName; timing: "before" | "after" } | null;
 
 function snapshot(runId: string, ids = [1, 2]): WhitelistSnapshot {
@@ -47,6 +50,7 @@ function pointer(version: string, prevVersion: string | null): ViewsPointer {
 }
 
 function fakePublication(initialPointer: ViewsPointer | null, failure: Failure = null) {
+  const store = new MemoryObjectStore();
   const state: {
     pointer: ViewsPointer | null;
     intent: PublishIntent | null;
@@ -113,10 +117,99 @@ function fakePublication(initialPointer: ViewsPointer | null, failure: Failure =
       state.visibleVersion = state.pointer?.version ?? null;
     },
     notifyIndexNow: async () => null,
+    prepareRelease: async (intent) => ({
+      id: intent.version, published_at: intent.published_at, prev_version: intent.prev_version,
+      tracked_repo_count: 2, skipped_repo_count: 1,
+      data_as_of: { seam_date: "2026-07-01", generated_at: "2026-07-17T00:00:00.000Z" },
+    }),
+    appendRelease: async (owner, record) => {
+      fault("releases", "before");
+      await appendReleaseRecord(owner, record, store, async () => {});
+      state.writes.push("releases");
+      fault("releases", "after");
+    },
     now: () => "2026-07-17T01:02:03.000Z",
   };
-  return { state, deps };
+  return { state, deps, store };
 }
+
+describe("public release publication", () => {
+  test("appends one record with the committed lineage and preserves it on retry", async () => {
+    const { state, deps, store } = fakePublication(pointer("version-old", null));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    const result = await publishVersionWithDeps("version-new", 7, deps);
+    const bytes = (await store.get(RELEASES_PATH))!.body;
+    expect(Releases.parse(JSON.parse(bytes))).toEqual({ schema_ver: 1, releases: [{
+      id: result.version, published_at: result.published_at, prev_version: result.prev_version,
+      tracked_repo_count: 2, skipped_repo_count: 1,
+      data_as_of: { seam_date: "2026-07-01", generated_at: "2026-07-17T00:00:00.000Z" },
+    }] });
+    deps.now = () => "2026-07-18T00:00:00.000Z";
+    await publishVersionWithDeps("version-new", 7, deps);
+    expect((await store.get(RELEASES_PATH))!.body).toBe(bytes);
+    expect(state.writes.at(-1)).toBe("releases");
+  });
+
+  for (const write of ["intent", "pointer", "recovery", "whitelist"] as const) {
+    test(`a failed ${write} write does not append a release`, async () => {
+      const { state, deps, store } = fakePublication(pointer("version-old", null), { write, timing: "before" });
+      state.snapshots.set("version-new", snapshot("version-new"));
+      await expect(publishVersionWithDeps("version-new", 7, deps)).rejects.toThrow();
+      expect(await store.get(RELEASES_PATH)).toBeNull();
+    });
+  }
+
+  test("invalid release inputs prevent the pointer switch", async () => {
+    const { state, deps, store } = fakePublication(pointer("version-old", null));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    deps.prepareRelease = async () => { throw new Error("missing metadata bucket"); };
+    await expect(publishVersionWithDeps("version-new", 7, deps)).rejects.toThrow("missing metadata bucket");
+    expect(state.pointer?.version).toBe("version-old");
+    expect(await store.get(RELEASES_PATH)).toBeNull();
+  });
+
+  test("a failed invalidation does not append a release", async () => {
+    const { state, deps, store } = fakePublication(pointer("version-old", null));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    deps.invalidate = async () => { throw new Error("invalidation unavailable"); };
+    await expect(publishVersionWithDeps("version-new", 7, deps)).rejects.toThrow("invalidation unavailable");
+    expect(await store.get(RELEASES_PATH)).toBeNull();
+  });
+
+  for (const timing of ["before", "after"] as const) {
+    test(`repairs a release write failure ${timing} storage commit without duplicates`, async () => {
+      const { state, deps, store } = fakePublication(pointer("version-old", null), { write: "releases", timing });
+      state.snapshots.set("version-new", snapshot("version-new"));
+      await expect(publishVersionWithDeps("version-new", 7, deps)).rejects.toMatchObject({
+        version: "version-new", step: "releases",
+      });
+      expect(state.pointer?.version).toBe("version-new");
+      await publishVersionWithDeps("version-new", 7, deps);
+      expect(Releases.parse(JSON.parse((await store.get(RELEASES_PATH))!.body)).releases).toHaveLength(1);
+    });
+  }
+
+  test("rollback does not append a managed refresh record", async () => {
+    const { state, deps, store } = fakePublication(pointer("version-new", "version-old"));
+    state.snapshots.set("version-old", snapshot("version-old"));
+    deps.prepareRelease = async () => { throw new Error("rollback must not prepare a release"); };
+    await rollbackVersionWithDeps("rollback-test", 7, undefined, deps);
+    expect(await store.get(RELEASES_PATH)).toBeNull();
+  });
+
+  test("losing ownership during append remains a non-retryable post-commit lease error", async () => {
+    const { state, deps, store } = fakePublication(pointer("version-old", null));
+    state.snapshots.set("version-new", snapshot("version-new"));
+    const lost = new WorkflowLeaseOwnershipError("lease lost inside append");
+    deps.appendRelease = (owner, record) => appendReleaseRecord(owner, record, store, async () => { throw lost; });
+    const error = await rejectionOf(publishVersionWithDeps("version-new", 7, deps));
+    expect(error).toBeInstanceOf(PublicationPostCommitLeaseLostError);
+    expect(error).toBeInstanceOf(WorkflowLeaseOwnershipError);
+    expect(error).toMatchObject({ version: "version-new", step: "releases", cause: lost });
+    expect(state.pointer?.version).toBe("version-new");
+    expect(await store.get(RELEASES_PATH)).toBeNull();
+  });
+});
 
 describe("managed publication retries", () => {
   for (const write of ["intent", "pointer", "recovery", "whitelist"] as const) {

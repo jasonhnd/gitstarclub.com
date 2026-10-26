@@ -501,6 +501,11 @@ describe("publish failures after the pointer commit", () => {
       checkInvalidationTarget,
       invalidate,
       notifyIndexNow: async () => null,
+      prepareRelease: async (intent) => ({
+        id: intent.version, published_at: intent.published_at, prev_version: intent.prev_version,
+        tracked_repo_count: 1, skipped_repo_count: 0, data_as_of: { seam_date: "2026-10-01" },
+      }),
+      appendRelease: async () => {},
       now: () => "2026-10-02T01:00:00.000Z",
     };
     return { state, deps };

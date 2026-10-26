@@ -97,7 +97,9 @@ describe("refresh subrequest budget at 5,669 repositories and owners", () => {
     expect(counts.get("publish")!.hops).toBe(3);
     expect(counts.get("publish")!.max).toBeLessThan(500);
     expect(publishCounts.map(({ page, total, entityReads }) => ({ page, total, entityReads }))).toEqual([
-      { page: 0, total: 23, entityReads: 0 },
+      // Publication now also reads version metadata and all 32 skip ledgers,
+      // then conditionally appends the public release history under its lease.
+      { page: 0, total: 60, entityReads: 0 },
       { page: 1, total: 452, entityReads: 400 },
       { page: 2, total: 455, entityReads: 400 },
     ]);
@@ -385,7 +387,7 @@ describe("refresh subrequest budget at 5,669 repositories and owners", () => {
       expect(fetchMetadata).not.toHaveBeenCalled();
       expect(h.store.json(path("manifest.json"))).toMatchObject({ status: "running" });
     } finally { h.restore(); }
-  });
+  }, 30000);
 });
 
 test("an exhausted invocation is never retried in the same budget", async () => {

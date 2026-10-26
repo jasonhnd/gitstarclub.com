@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import type { ViewsPointer, WhitelistSnapshot, WorkflowLease } from "@/lib/contracts";
+import { RELEASES_PATH, type ViewsPointer, type WhitelistSnapshot, type WorkflowLease } from "@/lib/contracts";
 import * as alert from "@/lib/observability/alert";
 import * as health from "@/lib/observability/health";
 import { MemoryObjectStore } from "@/lib/storage";
@@ -7,6 +7,7 @@ import * as storage from "@/lib/storage";
 import { recordPostCommitLeaseLoss } from "@/lib/workflows/checkpoint";
 import { renewWorkflowLease } from "@/lib/workflows/lease";
 import { publishVersionWithDeps, type PublicationDeps } from "@/lib/workflows/publication-core";
+import { appendReleaseRecord } from "@/lib/workflows/releases";
 import type { RefreshStepJob } from "./types";
 import { runRefreshStepRoute } from "./step-route";
 
@@ -112,6 +113,11 @@ describe("a real lease loss after the pointer switch", () => {
       checkInvalidationTarget: () => {},
       invalidate: async () => {},
       notifyIndexNow: async () => null,
+      prepareRelease: async (intent) => ({
+        id: intent.version, published_at: intent.published_at, prev_version: intent.prev_version,
+        tracked_repo_count: 1, skipped_repo_count: 0, data_as_of: { seam_date: "2026-10-01" },
+      }),
+      appendRelease: async () => {},
       now: () => "2026-10-02T01:00:00.000Z",
     };
     return { state, deps };
@@ -186,5 +192,29 @@ describe("a real lease loss after the pointer switch", () => {
     expect(second).toBe(false);
     expect(await bodyOf(RECORD)).toBe(body);
     expect(recordHealth).toHaveBeenCalledTimes(2);
+  });
+
+  test("a lease lost inside the release append records the releases step without retrying", async () => {
+    const { state, deps } = publication({});
+    deps.appendRelease = async (owner, record) => {
+      await takeLease(successor);
+      await appendReleaseRecord(owner, record, store);
+    };
+
+    const response = await runPublish(deps);
+
+    expect(response.status).toBe(500);
+    expect(state.pointerWrites).toBe(1);
+    expect(state.pointer?.version).toBe(runId);
+    expect(JSON.parse((await bodyOf(RECORD)) ?? "null")).toMatchObject({
+      run_id: runId, status: "failed", phase: "post_commit", published_version: runId, failed_step: "releases",
+    });
+    expect(await bodyOf(ACTIVE)).toBe(JSON.stringify(successor));
+    expect(await bodyOf(RELEASES_PATH)).toBeUndefined();
+    expect(await bodyOf(`ops/workflows/${runId}/manifest.json`)).toBeUndefined();
+    expect(await bodyOf(`ops/workflows/${runId}/error.json`)).toBeUndefined();
+    expect(sendAlert).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "managed refresh published; post-commit step failed", step: "releases" }),
+    );
   });
 });

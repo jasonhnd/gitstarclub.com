@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { MetadataBucketProgress, WorkflowValidation, type WhitelistSnapshot } from "@/lib/contracts";
+import { Meta, MetadataBucketProgress, RELEASES_PATH, Releases, WorkflowValidation, type WhitelistSnapshot } from "@/lib/contracts";
 import * as github from "@/lib/github";
 import { installWorkflowHarness, PREVIOUS_RUN, TEST_RUN, workflowSeed, type FullJob } from "../test-support";
 import { nextRefreshJob } from "./graph";
@@ -32,6 +32,9 @@ test("the real refresh publishes retained values and an audited missing newcomer
     }
     expect(job).toBeNull();
     expect(h.store.json("views/latest.json")).toMatchObject({ version: TEST_RUN });
+    const release = Releases.parse(h.store.json(RELEASES_PATH)).releases[0];
+    const meta = Meta.parse(h.store.json(`views/${TEST_RUN}/meta.json`));
+    expect(release).toMatchObject({ id: TEST_RUN, tracked_repo_count: meta.active_repo_count, skipped_repo_count: 2 });
     const validation = WorkflowValidation.parse(h.store.json(`ops/workflows/${TEST_RUN}/validation.json`));
     expect(validation).toMatchObject({ ok: true, invariants: { metadata_skipped_repos: 2, metadata_missing_repos: 1 } });
     expect(h.store.json(`ops/workflows/${TEST_RUN}/metadata-1.json`)).toMatchObject({ skipped: [{ id: 1, full_name: "example/repo-1", value_status: "retained" }] });
@@ -95,6 +98,7 @@ for (const firstPublication of [false, true]) {
       }
       expect(job).toMatchObject({ name: "metadata", cursor: { bucket: 26 } });
       expect(a.store.json(`ops/workflows/${failedRun}/manifest.json`)).toMatchObject({ status: "failed", published_version: null });
+      expect(a.store.contents[RELEASES_PATH]).toBeUndefined();
       expect(a.store.json(`ops/workflows/${failedRun}/metadata-1.json`)).toMatchObject({
         pending_pages: [], skipped: expect.arrayContaining([{ id: 1025, node_id: "R_1025", full_name: "example/repo-1025", reason: "not_returned", value_status: "missing" }]),
       });
@@ -128,6 +132,9 @@ for (const firstPublication of [false, true]) {
         ok: true, invariants: { metadata_skipped_repos: firstPublication ? 1 : 2, metadata_missing_repos: 1 },
       });
       expect(b.store.json("views/latest.json")).toMatchObject({ version: resumedRun, prev_version: firstPublication ? null : PREVIOUS_RUN });
+      expect(Releases.parse(b.store.json(RELEASES_PATH)).releases).toEqual([
+        expect.objectContaining({ id: resumedRun, skipped_repo_count: firstPublication ? 1 : 2 }),
+      ]);
       const lookup = b.store.json<Record<string, unknown>>(`views/${resumedRun}/lookup/repos.json`);
       expect(lookup["1025"]).toBeUndefined();
       expect(b.store.contents[`views/${resumedRun}/entity/repo/1025.json`]).toBeUndefined();
