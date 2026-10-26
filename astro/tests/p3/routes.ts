@@ -3,6 +3,7 @@ import { categoryFixture } from "./fixture";
 import { LOCALES, localizedPath, toHreflang } from "../../src/lib/i18n";
 import { CATEGORY_DIMENSIONS } from "../../../web/lib/categories/rules";
 import { strict as assert } from "node:assert";
+import { getDictionary } from "../../src/lib/i18n";
 
 export async function verifyCategoryRoutes(records = categoryFixture()) {
   const worker = await startWorker(records);
@@ -22,6 +23,19 @@ export async function verifyCategoryRoutes(records = categoryFixture()) {
         assert.equal((html.match(/<header /g) ?? []).length, 1, url);
         assert.ok(html.includes('type="application/ld+json"'), url);
         assert.ok(!html.includes("Body.tsx") && !html.includes("client:only"), url);
+        const dictionary = await getDictionary(locale);
+        assert.ok(html.includes(`<gsc-about-data class="block">`), `${url}: About this data block`);
+        assert.ok(html.includes(dictionary.aboutData.heading), `${url}: localized heading`);
+        const renderedText = html.replace(/<!--.*?-->/gs, "");
+        assert.ok(renderedText.includes(`(${dictionary.aboutData.currentTotals})`), `${url}: currentTotals layer`);
+        assert.ok(/7(?:[,.]|\u202f|\u00a0)?654/.test(renderedText), `${url}: current meta coverage`);
+        assert.ok(html.includes("fixture-v1"), `${url}: captured release`);
+        const pageTitle = renderedText.match(/<title>(.*?) · GitStarClub<\/title>/)?.[1];
+        const citation = renderedText.match(/<span data-citation[^>]*>(.*?)<\/span>/s)?.[1] ?? "";
+        assert.ok(pageTitle && citation.includes(pageTitle), `${url}: page title in citation`);
+        assert.ok(citation.includes(new URL(url, "https://gitstarclub.com").href), `${url}: page canonical in citation`);
+        assert.ok(html.indexOf(dictionary.common.answerCapsule) < html.indexOf("<gsc-about-data"), `${url}: after answer capsule`);
+        assert.ok(html.indexOf("<gsc-about-data") < html.indexOf(dictionary.common.faqHeading), `${url}: before FAQ`);
         checked++;
       }
       for (const path of ["/categories/no-such-dimension", "/categories/language/no-such-category", "/categories/language/unknown", "/categories/language/typescript/page/0", "/categories/language/typescript/page/02", "/categories/language/typescript/page/3"]) {
