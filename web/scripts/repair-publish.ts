@@ -1,5 +1,6 @@
 /** Guarded repair publisher. Execute with Bun --no-env-file; no ambient targets. */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,10 +10,10 @@ import { ACTIVE_WORKFLOW_PATH } from "../../pipeline/lib/bootstrap-lease.mjs";
 import { prepareRepairGeneration, stagePreparedRepairGeneration } from "./publish-repair-generation";
 import { publishRepairGeneration, rollbackRepairGeneration, RepairPublication, RepairPublicationError, RECOVERY_BASE_PREFIX, RECOVERY_CANONICAL_KEYS } from "./repair-publish-commit";
 import { resolvePublishTarget, formatRollbackCommand } from "./repair-publish-target";
-import { runCf, type CfRunner } from "./repair-publish-cf";
+import { repairConcurrency, runCf, type CfRunner } from "./repair-publish-cf";
 
 export function parseRepairArgs(argv: string[]) {
-  const allowed = ["--target", "--bucket", "--generation-dir", "--generation", "--recovery-generation", "--recovery-base-keys", "--confirm-production", "--rollback"];
+  const allowed = ["--target", "--bucket", "--generation-dir", "--generation", "--recovery-generation", "--recovery-base-keys", "--confirm-production", "--rollback", "--concurrency"];
   const values: Record<string, string> = {};
   let dryRun = false;
   // bun run SCRIPT -- FLAGS forwards the separator to the script.
@@ -44,8 +45,9 @@ export function parseRepairArgs(argv: string[]) {
   const recoveryGeneration = values["--recovery-generation"] ?? `bootstrap-recovery-${sha256Bytes(Buffer.from(generation)).slice(0, 24)}`;
   bootstrapGenerationPrefix(recoveryGeneration);
   assert(generation !== recoveryGeneration, "Recovery generation must differ from publication");
+  const concurrency = repairConcurrency(values["--concurrency"] === undefined ? undefined : Number(values["--concurrency"]));
   return { target: values["--target"], bucket: values["--bucket"], generation, recoveryGeneration,
-    built, recoveryBaseKeysFile: values["--recovery-base-keys"], confirmProduction: values["--confirm-production"], rollback, dryRun };
+    built, recoveryBaseKeysFile: values["--recovery-base-keys"], confirmProduction: values["--confirm-production"], rollback, dryRun, concurrency };
 }
 
 /** Simulate writes privately, forwarding ONLY list/get to the real read runner.
@@ -67,12 +69,21 @@ function dryRunRunner(readRunner: CfRunner, log: (line: string) => void): CfRunn
     const page = JSON.parse(result.stdout.toString());
     assert(Array.isArray(page), "Invalid cf object listing");
     const prefix = args[args.indexOf("--prefix") + 1];
-    // Keep the upstream array intact so full-page ambiguity and malformed entries
-    // still fail closed in the original modules.
-    return { ...result, stdout: JSON.stringify([...page.map((entry) => overlay.has(entry?.key)
-      ? { ...entry, size: overlay.get(entry.key)!.length } : entry),
-    ...[...overlay].filter(([key]) => key.startsWith(prefix) && !page.some((entry) => entry?.key === key))
-      .map(([key, body]) => ({ key, size: body.length }))]) };
+    const startAfter = args.includes("--start-after") ? args[args.indexOf("--start-after") + 1] : "";
+    const pageSize = Number(args[args.indexOf("--per-page") + 1]);
+    const additions = [...overlay].filter(([key]) => key.startsWith(prefix) && key > startAfter);
+    if (!additions.length) return result;
+    let previous = startAfter;
+    assert(page.length <= pageSize && page.every((entry) => {
+      if (typeof entry?.key !== "string" || !entry.key.startsWith(prefix) || entry.key <= previous ||
+          !Number.isSafeInteger(entry.size) || entry.size < 0) return false;
+      previous = entry.key; return true;
+    }), "Invalid cf object listing");
+    const merged = new Map(page.map((entry) => [entry?.key, entry]));
+    for (const [key, body] of additions) {
+      merged.set(key, { key, size: body.length, etag: createHash("md5").update(body).digest("hex") });
+    }
+    return { ...result, stdout: JSON.stringify([...merged.values()].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0).slice(0, pageSize)) };
   };
 }
 
@@ -84,7 +95,7 @@ export async function main(argv = process.argv.slice(2), runner: CfRunner = runC
   log(formatRollbackCommand(target.target, options.rollback ?? options.recoveryGeneration));
   const workDir = mkdtempSync(join(tmpdir(), "repair-publish-"));
   const effectiveRunner = options.dryRun ? dryRunRunner(runner, log) : runner;
-  const commitOptions = { ...options, runCf: effectiveRunner, workDir };
+  const commitOptions = { ...options, runCf: effectiveRunner, workDir, log };
   try {
     if (options.rollback) {
       log("STEP acquire lease; verify sealed rollback generation; swap bootstrap/latest.json; release lease");
@@ -93,7 +104,7 @@ export async function main(argv = process.argv.slice(2), runner: CfRunner = runC
       return result;
     }
     log("STEP verify both builder manifests and every local object (SHA-256, size cap, no symlinks)");
-    const stageOptions = { built: options.built, generation: options.generation, bucket: target.bucket };
+    const stageOptions = { built: options.built, generation: options.generation, bucket: target.bucket, concurrency: options.concurrency };
     const prepared = await prepareRepairGeneration(stageOptions);
     // Validate the explicit inventory before acquiring the lease as well.
     const inventory = await new RepairPublication(commitOptions).baseInventory();
@@ -101,7 +112,8 @@ export async function main(argv = process.argv.slice(2), runner: CfRunner = runC
     log(`STEP seal and verify recovery: ${options.recoveryGeneration} (${inventory.length} base objects from ${RECOVERY_BASE_PREFIX}; ${RECOVERY_CANONICAL_KEYS.length} canonical objects)`);
     const result = await publishRepairGeneration({ ...commitOptions, stage: async (publication) => {
       log("STEP stage new generation create-only (matching bytes resume)");
-      const staged = await stagePreparedRepairGeneration(stageOptions, prepared, publication.stageRunner);
+      publication.setNewExpected(prepared);
+      const staged = await stagePreparedRepairGeneration(stageOptions, prepared, publication.stageRunner, log);
       log(JSON.stringify(staged));
       log("STEP verify staged generation; commit bootstrap/latest.json with recoveryGeneration; release lease");
     } });

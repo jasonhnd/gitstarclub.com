@@ -18,10 +18,45 @@ export type CfRetryOptions = {
 };
 
 export function repairConcurrency(value = 4): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > 32) {
-    throw new Error("Concurrency must be an integer from 1 to 32");
+  if (!Number.isSafeInteger(value) || value < 1 || value > 10) {
+    throw new Error("Concurrency must be an integer from 1 to 10");
   }
   return value;
+}
+
+export type ListedObject = { key: string; size: number; etag: string };
+export const REPAIR_LIST_PAGE_SIZE = 1000;
+
+/** cf beta.18 prints only the result array; a short page terminates the walk. */
+export async function listCfPrefix(runner: CfRunner, prefix: string, bucket: string,
+  retry: CfRetryOptions = {}): Promise<Map<string, ListedObject>> {
+  const objects = new Map<string, ListedObject>();
+  let last = "";
+  for (;;) {
+    const args = ["r2", "objects", "list", "--bucket-name", bucket,
+      "--prefix", prefix, "--per-page", String(REPAIR_LIST_PAGE_SIZE)];
+    if (last) args.push("--start-after", last);
+    const bytes = await cfBytes(runner, args, retry);
+    let page: unknown;
+    try { page = JSON.parse(bytes.toString("utf8")); }
+    catch { throw new Error(`Invalid cf object listing: ${prefix}`); }
+    if (!Array.isArray(page) || page.length > REPAIR_LIST_PAGE_SIZE) throw new Error(`Invalid cf object listing: ${prefix}`);
+    for (const entry of page) {
+      if (typeof entry?.key !== "string" || !entry.key.startsWith(prefix) || entry.key <= last ||
+          !Number.isSafeInteger(entry.size) || entry.size < 0 || typeof entry.etag !== "string" ||
+          entry.etag.length === 0 || objects.has(entry.key)) {
+        throw new Error(`Invalid cf object listing: ${prefix}`);
+      }
+      objects.set(entry.key, entry);
+      last = entry.key;
+    }
+    if (page.length < REPAIR_LIST_PAGE_SIZE) return objects;
+  }
+}
+
+export function matchesListedObject(entry: ListedObject, body: Buffer): boolean {
+  const digest = createHash("md5").update(body).digest("hex");
+  return entry.size === body.length && (entry.etag === digest || entry.etag === `"${digest}"`);
 }
 
 /** Bound actual child calls, including lease renewal during upload retry waits. */

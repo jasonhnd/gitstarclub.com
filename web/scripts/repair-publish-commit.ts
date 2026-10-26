@@ -9,13 +9,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ACTIVE_WORKFLOW_PATH, parseBootstrapLease } from "../../pipeline/lib/bootstrap-lease.mjs";
 import {
-  BOOTSTRAP_POINTER_PATH, bootstrapGenerationPrefix, commitBootstrapGeneration,
-  sha256Bytes, stageBootstrapPhase, verifyBootstrapGeneration, rollbackBootstrapGeneration,
+  BOOTSTRAP_POINTER_PATH, bootstrapGenerationPrefix, buildBootstrapPhaseManifest, commitBootstrapGeneration,
+  parseBootstrapPhaseManifest, sha256Bytes, verifyBootstrapGeneration, rollbackBootstrapGeneration,
 } from "../../pipeline/lib/bootstrap-publication.mjs";
 import { BootstrapPublicationPointer } from "../lib/contracts/workflow";
 
 /** The injected runner must pass env to its child process unchanged. */
-import { cfResult, limitCfConcurrency, repairConcurrency, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
+import { cfResult, limitCfConcurrency, listCfPrefix, matchesListedObject, repairConcurrency,
+  type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export type { CfRunner } from "./repair-publish-cf";
 export const RECOVERY_BASE_PREFIX = "views/refresh-2026-09-13T06-00-16-398Z/";
 export const RECOVERY_CANONICAL_KEYS = Object.freeze(["canonical/v2/meta.json",
@@ -27,6 +28,7 @@ export type RepairCommitOptions = {
   bucket: string; runCf: CfRunner; workDir: string; concurrency?: number; retry?: CfRetryOptions;
   generation: string; recoveryGeneration: string; recoveryBaseKeysFile: string; now?: () => number;
   stage?: (publication: RepairPublication) => Promise<void>;
+  log?: (line: string) => void;
 };
 const encode = (value: unknown): Buffer => Buffer.from(JSON.stringify(value));
 const equal = (a: Buffer | null, b: Buffer | null) => a === null || b === null ? a === b : a.equals(b);
@@ -60,6 +62,8 @@ export class RepairPublication {
   private readonly owner = randomUUID();
   private readonly runner: CfRunner;
   private readonly concurrency: number;
+  private recoveryExpected?: Map<string, Buffer>;
+  private newExpected?: Map<string, Buffer>;
   constructor(readonly options: RepairCommitOptions) {
     bootstrapGenerationPrefix(options.generation);
     bootstrapGenerationPrefix(options.recoveryGeneration);
@@ -125,10 +129,11 @@ export class RepairPublication {
     // proves exact-key presence, never the completeness of a prefix inventory.
     const page = JSON.parse(await this.cf(["list", "--prefix", path, "--per-page", String(PER_PAGE)]));
     const seen = new Set<string>();
+    let previous = "";
     if (!Array.isArray(page) || page.length > PER_PAGE || page.some((item) => {
       if (typeof item?.key !== "string" || !item.key.startsWith(path) ||
-          !Number.isSafeInteger(item.size) || item.size < 0 || seen.has(item.key)) return true;
-      seen.add(item.key); return false;
+          item.key <= previous || !Number.isSafeInteger(item.size) || item.size < 0 || seen.has(item.key)) return true;
+      seen.add(item.key); previous = item.key; return false;
     })) throw new Error("Invalid cf object listing");
     const item = page.find((entry) => entry.key === path);
     if (!item) {
@@ -156,6 +161,63 @@ export class RepairPublication {
       const actual = await this.rawRead(path);
       if (!actual || sha256Bytes(actual) !== sha256Bytes(body)) throw new Error(`SHA-256 readback mismatch: ${path}`);
     } finally { await rm(scratch, { recursive: true, force: true }); }
+  }
+
+  private async generationPut(path: string, body: Buffer): Promise<void> {
+    await mkdir(this.options.workDir, { recursive: true });
+    const scratch = await mkdtemp(join(this.options.workDir, "repair-generation-put-"));
+    try {
+      const file = join(scratch, "body");
+      await writeFile(file, body, { flag: "wx" });
+      await this.cf(["put", path, "--file", file, "--content-type", "application/json"]);
+    } finally { await rm(scratch, { recursive: true, force: true }); }
+  }
+
+  setNewExpected(phases: Array<{ objects: Array<{ key: string; body: Buffer }>; manifest: { key: string; body: Buffer } }>) {
+    this.newExpected = new Map(phases.flatMap((phase) => [...phase.objects, phase.manifest].map(({ key, body }) => [key, body] as const)));
+  }
+
+  private async listPrefix(prefix: string) {
+    return listCfPrefix(this.runner, prefix, this.options.bucket, this.options.retry);
+  }
+
+  private async verifyExpected(generation: string, expected: Map<string, Buffer>) {
+    const prefix = `${bootstrapGenerationPrefix(generation)}/`;
+    const listed = await this.listPrefix(prefix);
+    if (listed.size !== expected.size) throw new Error(`Generation key count differs from manifest: ${generation}`);
+    for (const [key, body] of expected) {
+      const item = listed.get(key);
+      if (!item || !matchesListedObject(item, body)) throw new Error(`Generation object differs from manifest: ${key}`);
+    }
+    const phases = (["base", "canonical"] as const).map((phase) => {
+      const path = `${prefix}manifests/${phase}.json`;
+      const body = expected.get(path);
+      if (!body) throw new Error(`Missing expected manifest: ${path}`);
+      const manifest = parseBootstrapPhaseManifest(body, generation, phase);
+      for (const entry of manifest.objects) {
+        const object = expected.get(`${prefix}${entry.path}`);
+        if (!object || object.length !== entry.bytes || sha256Bytes(object) !== entry.sha256) {
+          throw new Error(`Generation object differs from manifest: ${prefix}${entry.path}`);
+        }
+      }
+      return { manifest, sha256: sha256Bytes(body) };
+    });
+    if (expected.size !== phases.reduce((sum, item) => sum + item.manifest.object_count + 1, 0)) {
+      throw new Error(`Generation key count differs from manifest: ${generation}`);
+    }
+    return { base: phases[0], canonical: phases[1],
+      objectCount: phases[0].manifest.object_count + phases[1].manifest.object_count,
+      totalBytes: phases[0].manifest.total_bytes + phases[1].manifest.total_bytes };
+  }
+
+  async verifyRecoveryListed() {
+    if (!this.recoveryExpected) throw new Error("Recovery was not sealed in this lease");
+    return this.verifyExpected(this.options.recoveryGeneration, this.recoveryExpected);
+  }
+
+  async verifyNewListed() {
+    if (!this.newExpected) throw new Error("Verified new-generation snapshot is required before pointer commit");
+    return this.verifyExpected(this.options.generation, this.newExpected);
   }
 
   private owns(current: ReturnType<typeof parseBootstrapLease>): boolean {
@@ -302,31 +364,71 @@ export class RepairPublication {
     // These exact Tech-approved sources do not depend on either pointer.
     this.source = { bootstrap, managed };
     const base = await this.baseInventory();
+    const baseListing = await this.listPrefix(RECOVERY_BASE_PREFIX);
+    const canonicalListing = await this.listPrefix("canonical/v2/");
+    const recoveryListing = await this.listPrefix(`${bootstrapGenerationPrefix(this.options.recoveryGeneration)}/`);
+    if (baseListing.size !== base.length || base.some(({ key }) => !baseListing.has(key))) {
+      throw new Error("Recovery base listing differs from explicit inventory");
+    }
+    if (RECOVERY_CANONICAL_KEYS.some((key) => !canonicalListing.has(key))) {
+      throw new Error("Required recovery canonical source is missing or incomplete");
+    }
+    const recoveryPrefix = bootstrapGenerationPrefix(this.options.recoveryGeneration);
+    const expectedKeys = new Set([
+      ...base.map(({ key }) => `${recoveryPrefix}/views/${key.slice(RECOVERY_BASE_PREFIX.length)}`),
+      ...RECOVERY_CANONICAL_KEYS.map((key) => `${recoveryPrefix}/${key}`),
+      `${recoveryPrefix}/manifests/base.json`, `${recoveryPrefix}/manifests/canonical.json`,
+    ]);
+    for (const key of recoveryListing.keys()) if (!expectedKeys.has(key)) throw new Error(`Unexpected recovery object: ${key}`);
+    const expected = new Map<string, Buffer>();
+    const total = base.length + RECOVERY_CANONICAL_KEYS.length + 2;
+    const started = Date.now();
+    let done = 0;
+    const progress = () => {
+      done++;
+      if (done % 500 === 0 || done === total) {
+        const elapsed = Math.max(0, Date.now() - started);
+        this.options.log?.(`phase=recovery done=${done} total=${total} elapsed=${Math.round(elapsed / 1000)}s estimated_remaining=${Math.round(elapsed / done * (total - done) / 1000)}s`);
+      }
+    };
+    const upload = async (key: string, body: Buffer) => {
+      expected.set(key, body);
+      const present = recoveryListing.get(key);
+      if (present) {
+        if (!matchesListedObject(present, body)) throw new Error(`Existing object differs: ${key}`);
+      } else {
+        await this.assertOwned();
+        await this.generationPut(key, body);
+      }
+      progress();
+    };
     for (const phase of ["base", "canonical"] as const) {
       const entries: SourceEntry[] = phase === "base" ? base : RECOVERY_CANONICAL_KEYS.map((key) => ({ key }));
-      const items = [];
-      for (const entry of entries) {
-        const body = await this.store.read(entry.key);
-        if (!body) throw new Error(`Required recovery source is missing or incomplete: ${entry.key}`);
-        if ((entry.bytes !== undefined && body.length !== entry.bytes) || (entry.sha256 && sha256Bytes(body) !== entry.sha256)) {
-          throw new Error(`Recovery source differs from inventory manifest: ${entry.key}`);
+      const items: Array<{ path: string; body: Buffer }> = new Array(entries.length);
+      const prefix = bootstrapGenerationPrefix(this.options.recoveryGeneration);
+      let next = 0, stopped = false, failure: unknown;
+      await Promise.all(Array.from({ length: Math.min(this.concurrency, items.length) }, async () => {
+        while (!stopped && next < items.length) {
+          try {
+            const index = next++, entry = entries[index];
+            const listed = (phase === "base" ? baseListing : canonicalListing).get(entry.key);
+            if (!listed) throw new Error(`Required recovery source is missing or incomplete: ${entry.key}`);
+            const body = this.jsonBody(entry.key, await this.cf(["get", entry.key]), listed.size);
+            if ((entry.bytes !== undefined && body.length !== entry.bytes) || (entry.sha256 && sha256Bytes(body) !== entry.sha256)) {
+              throw new Error(`Recovery source differs from inventory manifest: ${entry.key}`);
+            }
+            const path = phase === "base" ? `views/${entry.key.slice(RECOVERY_BASE_PREFIX.length)}` : entry.key;
+            items[index] = { path, body };
+            await upload(`${prefix}/${path}`, body);
+          } catch (error) { if (!stopped) failure = error; stopped = true; }
         }
-        items.push({ path: phase === "base" ? `views/${entry.key.slice(RECOVERY_BASE_PREFIX.length)}` : entry.key, body });
-      }
-      await stageBootstrapPhase({ generation: this.options.recoveryGeneration, phase,
-        items, store: this.store, concurrency: this.concurrency });
-      // Check source again against the actual create-only copies, not just
-      // against the manifest generated from the first source read.
-      for (let i = 0; i < entries.length; i++) {
-        const source = await this.store.read(entries[i].key);
-        const copy = await this.store.read(`${bootstrapGenerationPrefix(this.options.recoveryGeneration)}/${items[i].path}`);
-        if (!source || !copy || source.length !== copy.length || sha256Bytes(source) !== sha256Bytes(copy)) {
-          throw new Error(`Recovery copy differs from source: ${entries[i].key}`);
-        }
-      }
+      }));
+      if (stopped) throw failure;
+      await upload(`${prefix}/manifests/${phase}.json`, encode(buildBootstrapPhaseManifest(this.options.recoveryGeneration, phase, items)));
     }
+    this.recoveryExpected = expected;
     await this.assertSourceUnchanged(); await this.assertOwned();
-    return verifyBootstrapGeneration({ generation: this.options.recoveryGeneration, store: this.store, concurrency: 1 });
+    return this.verifyRecoveryListed();
   }
 }
 
@@ -337,7 +439,7 @@ export async function sealRecoveryGeneration(publication: RepairPublication) {
 /** Manifests supply every target key; the repair builder's fixed layout must
  * also be complete, even if someone reseals an incomplete canonical manifest. */
 async function verifyRepairTarget(publication: RepairPublication) {
-  const verified = await verifyBootstrapGeneration({ generation: publication.options.generation, store: publication.store, concurrency: 1 });
+  const verified = await publication.verifyNewListed();
   const basePaths = new Set<string>(verified.base.manifest.objects.map((item: { path: string }) => item.path));
   for (const path of REQUIRED_BASE_PATHS) {
     if (!basePaths.has(`views/${path}`)) throw new Error(`Incomplete repair base manifest: ${path}`);
@@ -362,11 +464,12 @@ export async function commitPointer(publication: RepairPublication) {
   await publication.assertOwned(); await publication.assertSourceUnchanged();
   // The shared helper only checks recovery when no bootstrap pointer exists.
   // Always verify it here, including updates to an existing bootstrap pointer.
-  await verifyBootstrapGeneration({ generation: recoveryGeneration, store: publication.store, concurrency: 1 });
+  const recoveryVerified = await publication.verifyRecoveryListed();
   const verified = await verifyRepairTarget(publication);
   const result = await commitBootstrapGeneration({ generation, recoveryGeneration, store: publication.store,
     verifyGeneration: (target) => target === generation ? Promise.resolve(verified)
-      : verifyBootstrapGeneration({ generation: target, store: publication.store, concurrency: 1 }),
+      : target === recoveryGeneration ? Promise.resolve(recoveryVerified)
+        : verifyBootstrapGeneration({ generation: target, store: publication.store, concurrency: 1 }),
     assertCanCommit: () => publication.assertOwned(), now: () => new Date((publication.options.now ?? Date.now)()).toISOString() });
   const body = await publication.store.read(BOOTSTRAP_POINTER_PATH);
   const pointer = BootstrapPublicationPointer.parse(body ? JSON.parse(body.toString()) : null);

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -67,9 +68,10 @@ function fixture(target: PublishTarget = "production") {
     if (hook?.(args, body)) return { code: 1, stdout: "", stderr: boxedError(key) };
     if (op === "list") {
       const prefix = args[args.indexOf("--prefix") + 1];
+      const after = args.includes("--start-after") ? args[args.indexOf("--start-after") + 1] : "";
       expect(args[args.indexOf("--per-page") + 1]).toBe("1000");
-      return { code: 0, stdout: JSON.stringify(listing?.(prefix) ?? keys().filter((key) => key.startsWith(prefix)).sort().slice(0, 1000)
-        .map((key) => ({ key, size: read(key).length, uploaded: "2026-10-26T00:00:00Z" })), null, 2) + "\n", stderr: "" };
+      return { code: 0, stdout: JSON.stringify(listing?.(prefix) ?? keys().filter((key) => key.startsWith(prefix) && key > after).sort().slice(0, 1000)
+        .map((key) => ({ key, size: read(key).length, etag: createHash("md5").update(read(key)).digest("hex"), uploaded: "2026-10-26T00:00:00Z" })), null, 2) + "\n", stderr: "" };
     }
     if (op === "get") return existsSync(join(bucketDir, key)) ? { code: 0, stdout: read(key), stderr: "" }
       : { code: 1, stdout: "", stderr: boxedError(key, 404) };
@@ -104,6 +106,14 @@ for (const target of ["production", "pre", "rehearsal"] as const) test(`complete
   expect(recoveryEnd).toBeLessThan(stageStart);
   expect(JSON.parse(h.read(LEASE).toString()).status).toBe("published");
   expect(h.writes().at(-1)![3]).toBe(LEASE);
+  const recoveryPrefix = `${bootstrapGenerationPrefix(RECOVERY)}/`;
+  const newPrefix = `${bootstrapGenerationPrefix(GEN)}/`;
+  expect(h.calls.filter((args) => args[2] === "list" && args[args.indexOf("--prefix") + 1] === recoveryPrefix)).toHaveLength(3);
+  expect(h.calls.filter((args) => args[2] === "list" && args[args.indexOf("--prefix") + 1] === newPrefix)).toHaveLength(2);
+  expect(h.calls.filter((args) => args[2] === "get" && (args[3].startsWith(BASE) || RECOVERY_CANONICAL_KEYS.includes(args[3])))).toHaveLength(40);
+  expect(h.calls.filter((args) => args[2] === "get" && (args[3].startsWith(recoveryPrefix) || args[3].startsWith(newPrefix)))).toHaveLength(0);
+  expect(h.writes().filter((args) => args[3].startsWith(recoveryPrefix))).toHaveLength(42);
+  expect(h.writes().filter((args) => args[3].startsWith(newPrefix))).toHaveLength(h.keys().filter((key) => key.startsWith(newPrefix)).length);
   expect(h.keys()).not.toContain("views/latest.json");
   for (const [key, body] of sources) expect(h.read(key).toString("base64")).toBe(body);
   const store = { read: async (key: string) => h.read(key) };
@@ -123,6 +133,40 @@ for (const target of ["production", "pre", "rehearsal"] as const) test(`complete
   expect(h.read(POINTER)).toEqual(pointerBeforeRetry);
 });
 
+for (const generation of [GEN, RECOVERY]) test(`final listing refuses changed ${generation} bytes before pointer commit`, async () => {
+  const h = fixture("pre"), prefix = `${bootstrapGenerationPrefix(generation)}/`;
+  let lists = 0;
+  const runner: CfRunner = async (args, child) => {
+    if (args[2] === "list" && args[args.indexOf("--prefix") + 1] === prefix) {
+      lists++;
+      if (lists === (generation === RECOVERY ? 3 : 2)) {
+        const key = `${prefix}views/meta.json`, body = Buffer.from(h.read(key));
+        body[body.length - 2] ^= 1;
+        h.put(h.bucketDir, key, body);
+      }
+    }
+    return h.runner(args, child);
+  };
+  await expect(main(h.args, runner, h.log)).rejects.toThrow("Generation object differs from manifest");
+  expect(h.keys()).not.toContain(POINTER);
+  expect(h.writes().some((args) => args[3] === POINTER)).toBe(false);
+  expect(JSON.parse(h.read(LEASE).toString()).status).toBe("failed");
+});
+
+test("final listing refuses an extra generation key before pointer commit", async () => {
+  const h = fixture("pre"), prefix = `${bootstrapGenerationPrefix(GEN)}/`;
+  let lists = 0;
+  const runner: CfRunner = async (args, child) => {
+    if (args[2] === "list" && args[args.indexOf("--prefix") + 1] === prefix && ++lists === 2) {
+      h.seed(`${prefix}unexpected.json`, { extra: true });
+    }
+    return h.runner(args, child);
+  };
+  await expect(main(h.args, runner, h.log)).rejects.toThrow("Generation key count differs from manifest");
+  expect(h.keys()).not.toContain(POINTER);
+  expect(h.writes().some((args) => args[3] === POINTER)).toBe(false);
+});
+
 for (const rollback of [false, true]) for (const releaseFails of [false, true]) {
   test(`command keeps workDir until failed verification and release settle: rollback=${rollback}, releaseFails=${releaseFails}`, async () => {
     const h = fixture("pre");
@@ -131,8 +175,8 @@ for (const rollback of [false, true]) for (const releaseFails of [false, true]) 
     const waiting = Promise.withResolvers<void>(), finishRead = Promise.withResolvers<void>();
     const releasing = Promise.withResolvers<void>(), finishRelease = Promise.withResolvers<void>();
     let workDir = "", settled = false;
-    const gets = new Map<string, number>();
     const events: string[] = [];
+    let finalLists = 0;
     const runner: CfRunner = async (args, child) => {
       const op = args[2], key = args[3];
       if (op === "put" && key === LEASE) {
@@ -147,18 +191,15 @@ for (const rollback of [false, true]) for (const releaseFails of [false, true]) 
           if (releaseFails) throw new Error("release failed after draining");
         }
       }
-      if (op === "get" && key.startsWith(`${prefix}/manifests/`)) {
-        const count = (gets.get(key) ?? 0) + 1; gets.set(key, count);
-        // Publishing first reads each manifest back after staging its bytes.
-        if (count === (rollback ? 1 : 2)) {
-          if (key.endsWith("canonical.json")) {
-            events.push("sibling reading"); waiting.resolve(); await finishRead.promise;
-            expect(existsSync(workDir)).toBe(true);
-            events.push("sibling settled"); throw new Error("later sibling read failed");
-          }
-          await waiting.promise;
-          events.push("first phase failed"); throw new Error("first verification phase failed");
-        }
+      if (!rollback && op === "list" && args[args.indexOf("--prefix") + 1] === `${prefix}/` && ++finalLists === 3) {
+        events.push("verification reading"); waiting.resolve(); await finishRead.promise;
+        expect(existsSync(workDir)).toBe(true);
+        events.push("verification settled"); throw new Error("final verification failed");
+      }
+      if (rollback && op === "get" && key === `${prefix}/manifests/base.json`) {
+        events.push("verification reading"); waiting.resolve(); await finishRead.promise;
+        expect(existsSync(workDir)).toBe(true);
+        events.push("verification settled"); throw new Error("rollback verification failed");
       }
       return h.runner(args, child);
     };
@@ -170,12 +211,12 @@ for (const rollback of [false, true]) for (const releaseFails of [false, true]) 
       expect(existsSync(workDir)).toBe(true); expect(settled).toBe(false);
       expect(events).not.toContain("release started");
       finishRead.resolve(); await releasing.promise;
-      expect(events.indexOf("sibling settled")).toBeLessThan(events.indexOf("release started"));
+      expect(events.indexOf("verification settled")).toBeLessThan(events.indexOf("release started"));
       expect(existsSync(workDir)).toBe(true); expect(settled).toBe(false);
       finishRelease.resolve();
       const error = await outcome;
       expect(error).toBeInstanceOf(RepairPublicationError);
-      expect(String(error)).toContain("first verification phase failed");
+      expect(String(error)).toContain(rollback ? "rollback verification failed" : "final verification failed");
       expect((error as RepairPublicationError).releaseError !== undefined).toBe(releaseFails);
       expect(events.at(-1)).toBe("release settled");
       expect(existsSync(workDir)).toBe(false);
@@ -266,7 +307,7 @@ for (const target of ["production", "rehearsal"] as const) describe(`${target} p
     for (const failure of ["full page", "get error"]) {
       const h = fixture(target);
       if (failure === "full page") h.listing((prefix) => prefix === LEASE
-        ? Array.from({ length: 1000 }, (_, i) => ({ key: `${prefix}/child-${i}`, size: 2 })) : undefined);
+        ? Array.from({ length: 1000 }, (_, i) => ({ key: `${prefix}/child-${String(i).padStart(4, "0")}`, size: 2 })) : undefined);
       else h.hook((args) => args[2] === "get" && args[3] === `${BASE}meta.json`);
       await expect(h.run()).rejects.toThrow(failure === "full page" ? "Ambiguous" : "Injected failure");
       expect(h.keys()).not.toContain(POINTER);
@@ -305,8 +346,10 @@ for (const target of ["production", "rehearsal"] as const) describe(`${target} p
   test("parser refuses incomplete/duplicate/mixed arguments and accepts bun's separator", () => {
     const h = fixture(target);
     expect(parseRepairArgs(["--", ...h.args]).generation).toBe(GEN);
+    expect(parseRepairArgs([...h.args, "--concurrency", "10"]).concurrency).toBe(10);
     for (const args of [[], ["--target"], [...h.args, "--bucket", h.bucket], [...h.args, "--dry-run", "--dry-run"],
-      [...h.args, "--rollback", RECOVERY], [...h.args, "--unknown", "x"]]) expect(() => parseRepairArgs(args)).toThrow();
+      [...h.args, "--rollback", RECOVERY], [...h.args, "--unknown", "x"],
+      [...h.args, "--concurrency", "0"], [...h.args, "--concurrency", "11"]]) expect(() => parseRepairArgs(args)).toThrow();
   });
 
   test("command option refusal exits nonzero without starting cf or reading ambient target defaults", () => {

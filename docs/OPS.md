@@ -969,7 +969,7 @@ The package command disables environment-file loading. The shared runner sets
 `CF_DELEGATION=1` on every child. No command writes `views/latest.json`.
 
 Recovery sealing and new-generation staging both default to **four concurrent
-uploads**. Four is Tech's tested value for copying roughly 14,000 objects with
+uploads**; `--concurrency` accepts 1 through 10. Four is Tech's tested value for copying roughly 14,000 objects with
 the pinned cf; twelve concurrent calls produced about 11% failures. The shared
 cf layer automatically waits out HTTP 429 (Too Many Requests): it honors an
 exposed `Retry-After` value, otherwise waits 30 seconds, and adds less than one
@@ -977,6 +977,8 @@ second of random jitter. The pinned beta.18 error renderer currently omits
 response headers, so the 30-second fallback normally applies. Every wait logs
 the key, retry attempt, and seconds. Each call allows at most six rate-limit
 retries and then fails hard.
+Recovery and staging print progress every 500 objects with phase, completed
+count, total, elapsed time, and estimated remaining time.
 
 For troubleshooting authentication: a single boxed HTTP 401 (Unauthorized) with
 API error code 10000 is retried automatically. The shared cf layer runs
@@ -1058,8 +1060,8 @@ pointer selection. Seal exactly these two sources:
   records `{ "key": "views/refresh-2026-09-13T06-00-16-398Z/meta.json", "bytes": 123, "sha256": "<64 lowercase hex characters>" }`;
   those lengths and digests are checked. The file must contain only keys from
   this exact tree, without duplicates, including meta, both lookups and both
-  all-time stock rankings. The caller is responsible for the complete inventory;
-  the CLI cannot discover or prove omitted keys. Do not synthesize an inventory
+  all-time stock rankings. The publisher checks that the complete paged source
+  listing matches the reviewed inventory exactly. Do not synthesize an inventory
   from a prefix response. Missing keys or required layout artifacts refuse.
 - Canonical: `RECOVERY_CANONICAL_KEYS`, exactly `canonical/v2/meta.json` and
   `canonical/v2/repos/0.json` through `canonical/v2/repos/31.json` (33 objects).
@@ -1070,8 +1072,9 @@ Both `bootstrap/latest.json` and `views/latest.json` are absent in today's
 production layout; pages serve the frozen fallback. That absence is supported:
 recovery reads the two fixed sources above. Neither pointer chooses the source.
 The library acquires `ops/workflows/active.json`, stages recovery create-only,
-checks every copied object's SHA-256 and size against its source, and verifies
-both sealed manifests. Publication verifies both target phase manifests and the
+checks each source against the explicit inventory when it includes size and
+SHA-256, and verifies the sealed copies using listed size and MD5 etag.
+Publication verifies both target phase manifests and the
 repair builder's fixed canonical layout (meta, all 32 shards of each of the four
 families, and site-daily years from base month heatmaps). It verifies recovery
 again even when an older bootstrap pointer exists. It then writes only
@@ -1080,16 +1083,19 @@ the lease. Rollback means pointing `bootstrap/latest.json` at that verified
 recovery generation. Never change `VIEWS_VERSION_FALLBACK` for this operation.
 `views/latest.json` is never written.
 
-Pinned `cf@1.0.0-beta.18` lists output only an array of records, with no cursor
-or truncation flag. Never enumerate prefixes. Every generation key comes from
-its phase manifest; fixed layouts and the explicit frozen inventory supply the
-remaining keys. For each object, list with the full key as prefix and
-`--per-page 1000`: an exact match proves presence; no exact match on a short page
-proves absence; a full page without that key is ambiguous and refuses. Get the
-raw body and verify length and SHA-256 against the manifest. Lease and pointer
-reads use the same full-key existence check before get. Every non-zero get exit
-is a hard failure, including a key disappearing between list and get. Error
-output never establishes absence.
+Pinned `cf@1.0.0-beta.18` lists output as an array of records with `key`,
+`size`, and `etag`, without a cursor or truncation flag. The repair publisher
+enumerates each needed source or generation prefix in 1,000-row pages, passing
+the last key as `--start-after`. It requires strictly ascending, unique,
+in-prefix keys and a final page shorter than 1,000; any anomaly refuses.
+Matching size and MD5 etag skip a generation object on resume, while a different
+object refuses. The first publication has an empty new-generation prefix.
+Recovery source objects are read once. After both generations are uploaded,
+the publisher enumerates each generation prefix again and compares the exact
+key count, every key, size, and MD5 etag to the manifests before pointer commit.
+Local builder output still gets full SHA-256 verification before lease acquisition.
+Lease and pointer reads retain the full-key existence check before get. Every
+non-zero get exit is a hard failure. Error output never establishes absence.
 The shared runner preserves raw bytes. The recovery/commit library accepts
 UTF-8 JSON snapshots only, including legitimate U+FFFD; binary and lossy
 size/hash mismatches refuse. Puts carry **no Cache-Control** because the

@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -37,13 +38,15 @@ function fakeCf(seed = new Map<string, Buffer>(), delay = 0) {
         const prefix = args[args.indexOf("--prefix") + 1];
         expect(args[args.indexOf("--per-page") + 1]).toBe("1000");
         expect(args).not.toContain("--cursor");
-        return ok(Buffer.from(JSON.stringify([...objects.keys()].filter((key) => key.startsWith(prefix)).slice(0, 1000).map((key) => ({ key })))));
+        const after = args.includes("--start-after") ? args[args.indexOf("--start-after") + 1] : "";
+        return ok(Buffer.from(JSON.stringify([...objects.keys()].filter((key) => key.startsWith(prefix) && key > after).sort().slice(0, 1000)
+          .map((key) => ({ key, size: objects.get(key)!.length, etag: createHash("md5").update(objects.get(key)!).digest("hex") })))));
       }
       if (operation === "get") { const body = objects.get(key); if (!body) throw new Error("not found"); return ok(body); }
       if (operation === "put") {
         // A put to an existing key is a test failure, even for identical bytes.
         expect(objects.has(key)).toBe(false);
-        expect(calls.some((call) => call[2] === "list" && call[call.indexOf("--prefix") + 1] === key)).toBe(true);
+        expect(calls.some((call) => call[2] === "list" && call[call.indexOf("--prefix") + 1] === `${prefix}/`)).toBe(true);
         if (key.includes("/manifests/")) {
           const manifest = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
           for (const item of manifest.objects) expect(objects.has(`${prefix}/${item.path}`)).toBe(true);
@@ -79,7 +82,7 @@ test("default staging concurrency is four and a rejected put rechecks before res
     retry: { sleep: async (ms) => { waits.push(ms); }, random: () => 0, log: () => {} } }, runner);
   expect(waits).toEqual([30_000]); expect(cf.peak()).toBe(4);
   expect(calls.filter((args) => args[2] === "put" && args[3] === key)).toHaveLength(2);
-  expect(calls.filter((args) => args[2] === "list" && args[args.indexOf("--prefix") + 1] === key)).toHaveLength(2);
+  expect(calls.filter((args) => args[2] === "list" && args[args.indexOf("--prefix") + 1] === key)).toHaveLength(1);
 });
 
 test("an identical object found after a 429 counts as skipped, including through a guarded runner", async () => {
@@ -172,36 +175,32 @@ test("command errors and malformed listings never cause a put", async () => {
   }
 });
 
-test("a short page with only prefix children means the exact key is absent", async () => {
+test("unexpected prefix children refuse before any put", async () => {
   const { options } = fixture();
   const children = new Map([0, 1].map((i) => [`${prefix}/views/${i}.json/child`, Buffer.from("child")]));
   const cf = fakeCf(children);
-  expect((await publishRepairGeneration(options, cf.runner)).created).toBe(14);
-  expect(cf.calls.some((call) => call[2] === "get")).toBe(false);
+  await expect(publishRepairGeneration(options, cf.runner)).rejects.toThrow("Unexpected generation object");
+  expect(cf.calls.some((call) => call[2] === "put")).toBe(false);
   for (const [key, body] of children) expect(cf.objects.get(key)).toEqual(body);
 });
 
-test("a full page without the exact key is ambiguous and never causes a put", async () => {
+test("a malformed full page refuses before any put", async () => {
   const { options } = fixture(), calls: string[][] = [];
   const runner: CfRunner = async (args) => {
     calls.push(args);
     const key = args[args.indexOf("--prefix") + 1];
     return ok(Buffer.from(JSON.stringify(Array.from({ length: 1000 }, (_, i) => ({ key: `${key}/child-${i}` })))));
   };
-  await expect(publishRepairGeneration(options, runner)).rejects.toThrow("Incomplete cf object listing");
+  await expect(publishRepairGeneration(options, runner)).rejects.toThrow("Invalid cf object listing");
   expect(calls.length).toBeGreaterThan(0);
   expect(calls.every((call) => call[2] === "list")).toBe(true);
 });
 
-test("exact presence on a full page is sufficient to compare existing bytes", async () => {
+test("complete listing skips every matching object without gets or puts", async () => {
   const { options, bytes } = fixture(), cf = fakeCf(bytes);
-  const runner: CfRunner = async (args) => {
-    if (args[2] !== "list") return cf.runner(args, child);
-    const key = args[args.indexOf("--prefix") + 1];
-    return ok(Buffer.from(JSON.stringify([{ key }, ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}/child-${i}` }))])));
-  };
-  expect((await publishRepairGeneration(options, runner)).skipped).toBe(14);
-  expect(cf.calls.every((call) => call[2] === "get")).toBe(true);
+  expect((await publishRepairGeneration(options, cf.runner)).skipped).toBe(14);
+  expect(cf.calls.filter((call) => call[2] === "list")).toHaveLength(1);
+  expect(cf.calls.some((call) => call[2] === "get" || call[2] === "put")).toBe(false);
 });
 
 test("validates every listing entry even after finding the exact key", async () => {

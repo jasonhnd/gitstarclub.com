@@ -11,7 +11,7 @@ import {
   BOOTSTRAP_PHASES, bootstrapGenerationPrefix, sha256Bytes, verifyBootstrapGeneration,
 } from "../../pipeline/lib/bootstrap-publication.mjs";
 
-import { cfBytes, cfObjectExists, cfResult, repairConcurrency, runCf, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
+import { cfResult, listCfPrefix, matchesListedObject, repairConcurrency, runCf, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export { runCf, type CfRunner } from "./repair-publish-cf";
 export type PublishOptions = { built: string; generation: string; bucket: string; concurrency?: number; dryRun?: boolean; retry?: CfRetryOptions };
 type ObjectBytes = { key: string; size: number; sha256: string; body: Buffer };
@@ -93,15 +93,27 @@ export async function stagePreparedRepairGeneration(options: PublishOptions,
     }
     return result;
   }
-  const scratch = mkdtempSync(join(tmpdir(), "publish-repair-"));
   let failure: unknown, stopped = false, sequence = 0;
+  const listed = await listCfPrefix(runner, `${bootstrapGenerationPrefix(options.generation)}/`, options.bucket, options.retry);
+  const expectedKeys = new Set(phases.flatMap((phase) => [...phase.objects, phase.manifest].map((item) => item.key)));
+  for (const key of listed.keys()) assert(expectedKeys.has(key), `Unexpected generation object: ${key}`);
+  const scratch = mkdtempSync(join(tmpdir(), "publish-repair-"));
+  const total = phases.reduce((sum, phase) => sum + phase.objects.length + 1, 0);
+  const started = Date.now();
+  let done = 0;
+  const progress = () => {
+    done++;
+    if (done % 500 === 0 || done === total) {
+      const elapsed = Math.max(0, Date.now() - started);
+      log(`phase=stage done=${done} total=${total} elapsed=${Math.round(elapsed / 1000)}s estimated_remaining=${Math.round(elapsed / Math.max(done, 1) * (total - done) / 1000)}s`);
+    }
+  };
   async function stage(item: ObjectBytes) {
-    const present = await cfObjectExists(runner, item.key, options.bucket, options.retry);
     if (stopped) return;
+    const present = listed.get(item.key);
     if (present) {
-      const body = await cfBytes(runner, ["r2", "objects", "get", item.key, "--bucket-name", options.bucket], options.retry);
-      assert(body.length === item.size && sha256Bytes(body) === item.sha256, `Existing object differs: ${item.key}`);
-      result.skipped++; return;
+      assert(matchesListedObject(present, item.body), `Existing object differs: ${item.key}`);
+      result.skipped++; progress(); return;
     }
     if (stopped) return;
     const file = join(scratch, `${sequence++}`);
@@ -111,6 +123,7 @@ export async function stagePreparedRepairGeneration(options: PublishOptions,
         "--content-type", item.key.endsWith(".json") ? "application/json" : "application/octet-stream"], { log, ...options.retry });
       if (put.alreadyPresent) result.skipped++;
       else result.created++;
+      progress();
     } finally { rmSync(file, { force: true }); }
   }
   async function pool(items: ObjectBytes[]) {

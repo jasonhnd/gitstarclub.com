@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ACTIVE_WORKFLOW_PATH as ACTIVE } from "../../pipeline/lib/bootstrap-lease.mjs";
 import { bootstrapGenerationPrefix, buildBootstrapPhaseManifest, sha256Bytes, verifyBootstrapGeneration } from "../../pipeline/lib/bootstrap-publication.mjs";
-import { commitPointer, publishRepairGeneration, RepairPublication, sealRecoveryGeneration, RECOVERY_BASE_PREFIX as BASE, RECOVERY_CANONICAL_KEYS, RepairPublicationError, type CfRunner } from "../scripts/repair-publish-commit";
+import { commitPointer, publishRepairGeneration, RepairPublication, sealRecoveryGeneration, RECOVERY_BASE_PREFIX as BASE, RECOVERY_CANONICAL_KEYS, RepairPublicationError, type CfRunner, type RepairCommitOptions } from "../scripts/repair-publish-commit";
 
 const GEN = "bootstrap-repair-824b", RECOVERY = "bootstrap-recovery-824b";
 const POINTER = "bootstrap/latest.json", NOW = Date.parse("2026-10-26T12:00:00Z");
@@ -46,9 +47,11 @@ function fixture() {
       expect(args.includes("--cursor")).toBe(false);
       expect(args.includes("--delimiter")).toBe(false);
       const count = Number(args[args.indexOf("--per-page") + 1]);
+      const after = args.includes("--start-after") ? args[args.indexOf("--start-after") + 1] : "";
       // Real beta.18 stdout: a pretty JSON ARRAY plus console.log's newline.
       stdout = JSON.stringify(badListing ? { objects: [], truncated: false } : listOverride?.(prefix) ??
-        keys.slice(0, count).map((key) => ({ key, size: objects.get(key)!.length })), null, 2) + "\n";
+        keys.filter((key) => key > after).slice(0, count).map((key) => ({ key, size: objects.get(key)!.length,
+          etag: createHash("md5").update(objects.get(key)!).digest("hex") })), null, 2) + "\n";
     } else if (args[2] === "get") {
       if (!objects.has(args[3])) return { code: 1, stdout: "", stderr: boxedError(args[3]) };
       stdout = objects.get(args[3])!.toString("utf8");
@@ -86,9 +89,23 @@ function fixture() {
     .map((key) => hashed ? { key, bytes: objects.get(key)!.length, sha256: sha256Bytes(objects.get(key)!) } : key)));
   inventory();
   seed(GEN);
-  const options = { bucket: "fake-bucket", runCf, workDir, generation: GEN, recoveryGeneration: RECOVERY, recoveryBaseKeysFile, now: () => clock };
+  const setExpected = (publication: RepairPublication) => {
+    const prefix = bootstrapGenerationPrefix(GEN);
+    publication.setNewExpected((["base", "canonical"] as const).map((phase) => {
+      const manifestKey = `${prefix}/manifests/${phase}.json`;
+      const body = objects.get(manifestKey);
+      if (!body) throw new Error(`${manifestKey}: required phase manifest is missing`);
+      const manifest = JSON.parse(body.toString());
+      return { manifest: { key: manifestKey, body },
+        objects: manifest.objects.map((item: { path: string }) => ({ key: `${prefix}/${item.path}`, body: objects.get(`${prefix}/${item.path}`) ?? Buffer.alloc(0) })) };
+    }));
+  };
+  const options: RepairCommitOptions = { bucket: "fake-bucket", runCf, workDir, generation: GEN, recoveryGeneration: RECOVERY,
+    recoveryBaseKeysFile, now: () => clock, stage: async (publication) => setExpected(publication) };
   const held = (run_id = "other-owner", fencing_token = 7) => encode({ run_id, fencing_token, status: "running", expires_at: new Date(clock + 600_000).toISOString() });
-  return { objects, writes, calls, options, inventory, seed, bootPointer, held, publication: () => new RepairPublication(options),
+  return { objects, writes, calls, options, inventory, seed, bootPointer, held, publication: () => {
+    const publication = new RepairPublication(options); setExpected(publication); return publication;
+  },
     hook: (value: typeof hook) => { hook = value; }, afterPut: (value: typeof afterPut) => { afterPut = value; },
     listOverride: (value: typeof listOverride) => { listOverride = value; },
     fail: (value: string) => { failure = value; }, badListing: () => { badListing = true; }, advance: (ms: number) => { clock += ms; } };
@@ -279,7 +296,7 @@ describe("repair publication with fake cf only", () => {
 
   test("detects ownership loss during staged verification before pointer write", async () => {
     const h = fixture(), p = h.publication(); await p.acquire(); await sealRecoveryGeneration(p);
-    h.hook((args) => { if (args[2] === "get" && args[3].startsWith(`${bootstrapGenerationPrefix(GEN)}/`)) h.objects.set(ACTIVE, h.held()); });
+    h.hook((args) => { if (args[2] === "list" && args[args.indexOf("--prefix") + 1] === `${bootstrapGenerationPrefix(GEN)}/`) h.objects.set(ACTIVE, h.held()); });
     await expect(commitPointer(p)).rejects.toThrow("lost or expired");
     expect(h.objects.has(POINTER)).toBe(false);
     expect(JSON.parse(h.objects.get(ACTIVE)!.toString()).run_id).toBe("other-owner");
@@ -289,7 +306,7 @@ describe("repair publication with fake cf only", () => {
     const h = fixture(), p = h.publication(); await p.acquire(); await sealRecoveryGeneration(p);
     const key = `${bootstrapGenerationPrefix(RECOVERY)}/canonical/v2/meta.json`;
     h.objects.set(key, Buffer.from(h.objects.get(key)!.toString().replace("current", "changed")));
-    await expect(commitPointer(p)).rejects.toThrow("differs from its manifest");
+    await expect(commitPointer(p)).rejects.toThrow("differs from manifest");
     expect(h.objects.has(POINTER)).toBe(false); await p.release("failed");
   });
 
@@ -311,7 +328,7 @@ describe("repair publication with fake cf only", () => {
     }
     const h = fixture(); h.badListing(); await expect(publishRepairGeneration(h.options)).rejects.toThrow("Invalid cf object listing");
     const corrupt = fixture(); corrupt.afterPut((key) => { if (key.startsWith("bootstrap/generations/")) corrupt.objects.set(key, encode({ corrupt: true })); });
-    await expect(publishRepairGeneration(corrupt.options)).rejects.toThrow("SHA-256 readback mismatch");
+    await expect(publishRepairGeneration(corrupt.options)).rejects.toThrow("Generation object differs from manifest");
     expect(corrupt.objects.has(POINTER)).toBe(false);
   });
 
@@ -333,16 +350,14 @@ describe("repair publication with fake cf only", () => {
         const key = args[args.indexOf("--prefix") + 1];
         listed.set(key, (listed.get(key) ?? 0) + 1);
       } else if (args[2] === "get") {
-        const count = listed.get(args[3]) ?? 0;
-        expect(count).toBeGreaterThan(0);
-        listed.set(args[3], count - 1);
+        expect([...listed.keys()].some((prefix) => args[3].startsWith(prefix))).toBe(true);
       }
     }
   });
 
   test("missing frozen source with both pointers absent releases the lease", async () => {
     const missing = fixture(); missing.objects.delete("views/latest.json"); missing.objects.delete(`${BASE}meta.json`);
-    await expect(publishRepairGeneration(missing.options)).rejects.toThrow("Required recovery source is missing or incomplete");
+    await expect(publishRepairGeneration(missing.options)).rejects.toThrow("Recovery base listing differs from explicit inventory");
     expect(missing.objects.has(POINTER)).toBe(false);
     expect(JSON.parse(missing.objects.get(ACTIVE)!.toString()).status).toBe("failed");
   });
@@ -358,19 +373,19 @@ describe("repair publication with fake cf only", () => {
   });
   test("exact-key lookup refuses a full page without the key and accepts a short absent page", async () => {
     const h = fixture();
-    h.listOverride((key) => Array.from({ length: 1000 }, (_, i) => ({ key: `${key}.suffix-${i}`, size: 2 })));
+    h.listOverride((key) => Array.from({ length: 1000 }, (_, i) => ({ key: `${key}.suffix-${String(i).padStart(4, "0")}`, size: 2 })));
     await expect(publishRepairGeneration(h.options)).rejects.toThrow("Ambiguous exact-key absence");
     expect(h.objects.has(POINTER)).toBe(false);
     expect(h.writes).toEqual([]);
     const short = fixture();
     // Missing source with only a prefix sibling must never be copied.
     short.objects.delete(`${BASE}meta.json`); short.objects.set(`${BASE}meta.json.extra`, encode({ sibling: true }));
-    await expect(publishRepairGeneration(short.options)).rejects.toThrow("source is missing or incomplete");
+    await expect(publishRepairGeneration(short.options)).rejects.toThrow("Recovery base listing differs from explicit inventory");
     expect(short.objects.has(POINTER)).toBe(false);
     const present = fixture();
     const realKey = `${BASE}meta.json`, body = present.objects.get(realKey)!;
     present.listOverride((key) => key === realKey ? [{ key, size: body.length },
-      ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}.suffix-${i}`, size: 2 }))] : undefined);
+      ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}.suffix-${String(i).padStart(4, "0")}`, size: 2 }))] : undefined);
     await publishRepairGeneration(present.options);
   });
 
@@ -398,17 +413,18 @@ describe("repair publication with fake cf only", () => {
 
   test("requires all 33 canonical sources, never a whitelist substitute", async () => {
     const h = fixture(); h.objects.delete("canonical/v2/repos/31.json");
-    await expect(publishRepairGeneration(h.options)).rejects.toThrow("canonical/v2/repos/31.json");
+    await expect(publishRepairGeneration(h.options)).rejects.toThrow("Required recovery canonical source is missing");
     expect(h.objects.has(POINTER)).toBe(false);
     expect(h.calls.some((args) => args.includes("canonical/v2/whitelist/latest.json"))).toBe(false);
     expect(JSON.parse(h.objects.get(ACTIVE)!.toString()).status).toBe("failed");
   });
 
-  test("rechecks sources against sealed copies and refuses mid-copy mutation", async () => {
+  test("reads each source once and seals the captured copy", async () => {
     const h = fixture();
     h.afterPut((key) => { if (key.endsWith("/manifests/base.json")) h.objects.set(`${BASE}meta.json`, encode({ changed: true })); });
-    await expect(publishRepairGeneration(h.options)).rejects.toThrow("Recovery copy differs from source");
-    expect(h.objects.has(POINTER)).toBe(false);
+    await publishRepairGeneration(h.options);
+    expect(h.objects.get(`${bootstrapGenerationPrefix(RECOVERY)}/views/meta.json`)?.toString()).toContain("current base");
+    expect(h.calls.filter((args) => args[2] === "get" && args[3] === `${BASE}meta.json`)).toHaveLength(1);
   });
 
   test("resealing an incomplete target manifest cannot bypass fixed canonical layout", async () => {
@@ -419,7 +435,7 @@ describe("repair publication with fake cf only", () => {
       const items = manifest.objects.filter((item: { path: string }) => item.path !== path)
         .map((item: { path: string }) => ({ path: item.path, body: h.objects.get(`${prefix}/${item.path}`)! }));
       h.objects.set(manifestKey, encode(buildBootstrapPhaseManifest(GEN, "canonical", items)));
-      await expect(publishRepairGeneration(h.options)).rejects.toThrow("Incomplete repair canonical manifest");
+      await expect(publishRepairGeneration(h.options)).rejects.toThrow("Generation key count differs from manifest");
       expect(h.objects.has(POINTER)).toBe(false);
     }
   });
@@ -446,7 +462,7 @@ describe("repair publication with fake cf only", () => {
       expect(error).toBeInstanceOf(RepairPublicationError);
       const failure = error as RepairPublicationError;
       expect(failure.phase).toBe("seal"); expect(failure.pointerMayHaveMoved).toBe(false);
-      expect(failure.message).toContain("source is missing or incomplete");
+      expect(failure.message).toContain("Recovery base listing differs from explicit inventory");
       expect(String(failure.releaseError)).toContain("release failed");
     }
   });
@@ -537,7 +553,7 @@ describe("repair publication with fake cf only", () => {
     for (const key of [ACTIVE, POINTER, "views/latest.json"]) {
       const h = fixture();
       h.listOverride((prefix) => prefix === key
-        ? Array.from({ length: 1000 }, (_, i) => ({ key: `${key}.suffix-${i}`, size: 2 })) : undefined);
+        ? Array.from({ length: 1000 }, (_, i) => ({ key: `${key}.suffix-${String(i).padStart(4, "0")}`, size: 2 })) : undefined);
       await expect(publishRepairGeneration(h.options)).rejects.toThrow(`Ambiguous exact-key absence: ${key}`);
       expect(h.calls.some((args) => args[2] === "get" && args[3] === key)).toBe(false);
       expect(h.writes.some(({ key }) => key === POINTER)).toBe(false);
@@ -545,7 +561,7 @@ describe("repair publication with fake cf only", () => {
     const h = fixture();
     h.listOverride((key) => h.objects.has(key) && [ACTIVE, POINTER, "views/latest.json"].includes(key)
       ? [{ key, size: h.objects.get(key)!.length },
-        ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}.suffix-${i}`, size: 2 }))] : undefined);
+        ...Array.from({ length: 999 }, (_, i) => ({ key: `${key}.suffix-${String(i).padStart(4, "0")}`, size: 2 }))] : undefined);
     await publishRepairGeneration(h.options);
     expect(JSON.parse(h.objects.get(POINTER)!.toString()).generation).toBe(GEN);
   });
