@@ -1,3 +1,4 @@
+import { pageIdentity } from "../../lib/page-identity";
 import type { ReactNode } from "react";
 import Link from "../../components/Link";
 import { AnswerCapsule } from "@/app/_explore/AnswerCapsule";
@@ -7,7 +8,7 @@ import { PeriodSwitcher } from "@/app/_explore/PeriodSwitcher";
 import { RankingList, type Row } from "@/app/_explore/RankingList";
 import { JsonLd } from "@/app/_explore/JsonLd";
 import { PAD_X } from "@/app/_explore/layout-tokens";
-import { getHotSnapshot, getRank, getReposLookup } from "@/lib/data";
+import { getHotSnapshot, getMeta, getRank, getReposLookup } from "@/lib/data";
 import { resolveAvailableRankPeriods } from "@/lib/data/rank-periods";
 import { dateLabel, fmtStars } from "@/lib/format";
 import { getDictionary, type Dict, type Locale } from "@/lib/i18n";
@@ -29,6 +30,7 @@ import { pageMeta } from "@/lib/seo";
 import { repositoryTableLabels } from "@/app/_localized/routing";
 import { buildLocalizedPulseCapsule, buildLocalizedPulseFaqs } from "@/app/_localized/seo-copy";
 import { answerCapsuleLabels } from "@/app/_localized/detail-copy";
+import { AboutThisDataContent } from "../../components/AboutThisDataContent";
 import { EmptyState, periodSwitcherLinks } from "./ranking-ui";
 import { projectRepoRows, PULSE_MOVER_LIMIT, PULSE_GIANT_LIMIT, PULSE_ANNIVERSARY_LIMIT } from "@/app/_localized/ranking-page-data";
 import { onThisDayEmptyMessage } from "@/lib/on-this-day-empty";
@@ -56,19 +58,21 @@ type PulseViewProps = {
   locale: Locale;
   canonicalPath: "/" | "/pulse";
   includeWebsiteLd?: boolean;
+  releaseId: string | null;
   now?: Date;
 };
 
-export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = false, now = new Date() }: PulseViewProps) {
+export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = false, releaseId, now = new Date() }: PulseViewProps) {
   const t = await getDictionary(locale);
   const language = toBcp47Locale(locale);
   const routePath = localizedPath(locale, canonicalPath);
   const href = (path: string) => localizedPath(locale, path);
   const periods = currentUtcPeriods(now);
-  const [snap, lookup, availablePeriods] = await Promise.all([
+  const [snap, lookup, availablePeriods, aboutMeta] = await Promise.all([
     getHotSnapshot(),
     getReposLookup(),
     resolveAvailableRankPeriods(now),
+    getMeta(),
   ]);
   const [activeWeekRank, activeMonthRank] = await Promise.all([
     availablePeriods.week.kind === "week" ? getRank("week", availablePeriods.week.period, "repo", "flow") : Promise.resolve(null),
@@ -157,6 +161,16 @@ export async function PulsePageView({ locale, canonicalPath, includeWebsiteLd = 
         </div>
 
         {capsule && <AnswerCapsule capsule={capsule} className="mt-[clamp(1.25rem,3vw,2rem)]" labels={answerCapsuleLabels(locale, t)} />}
+
+        <AboutThisDataContent
+          locale={locale}
+          dictionary={t}
+          meta={aboutMeta}
+          releaseId={releaseId}
+          layer="periodGains"
+          additionalLayers={["currentTotals"]}
+          {...pageIdentity(locale, canonicalPath, canonicalPath === "/" ? `${t.meta.homeTitle} · GitStarClub` : t.meta.pulseTitle, canonicalPath === "/")}
+        />
 
         <div className="mt-[clamp(1.25rem,3vw,2rem)] grid gap-x-8 gap-y-10 lg:grid-cols-3">
           <PulsePanel

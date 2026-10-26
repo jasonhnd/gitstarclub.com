@@ -29,7 +29,7 @@ export async function loadPage(data: PublishedData, kind: PageKind, localeValue 
       const prefix = locale === "en" ? "" : `/${locale}`;
       const canonicalPath = canonical.pathname.slice(prefix.length) || "/";
       const citation = pageIdentity(locale, canonicalPath, title, false);
-      const rendered = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true })
+      const rendered = await (kind === "home" ? PulsePageView({ locale, canonicalPath: "/", includeWebsiteLd: true, releaseId: data.publication.views?.version ?? null })
         : kind === "rankings" ? RankingsPageView({ locale, ...citation })
         : kind === "year" ? RankingsYearPageView({ locale, year, ...citation }) : RankingsPeriodPageView({ locale, year, period, ...citation }));
       const images = metadata.openGraph?.images as Array<{ url: string }>;

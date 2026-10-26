@@ -2,6 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getDictionary, LOCALES, type Locale } from "../../src/lib/i18n";
+import { meta, publication } from "../about-data/fixture";
 import type { PulseData } from "../../src/packages/p5/data";
 import type { HotSnapshot } from "../../../web/lib/contracts";
 import { onThisDayEmptyMessage } from "../../../web/lib/on-this-day-empty";
@@ -50,7 +51,7 @@ function snapshot(onThisDay: string | null): HotSnapshot {
 }
 
 function data(onThisDay: string | null): PulseData {
-  return { snap: snapshot(onThisDay), lookup: {}, availablePeriods, activeWeekRank: null, activeMonthRank: null };
+  return { meta, snap: snapshot(onThisDay), lookup: {}, availablePeriods, activeWeekRank: null, activeMonthRank: null };
 }
 
 function panel(html: string, heading: string): string {
@@ -79,7 +80,7 @@ test("empty copy follows section freshness in every locale", async () => {
 for (const locale of ["en", "ja"] as const satisfies readonly Locale[]) {
   test(`${locale} renders unavailable history without a borrowed snapshot date`, async () => {
     const t = await getDictionary(locale);
-    const html = renderToStaticMarkup(createElement(PulseBody, { locale, t, data: data(null), now: NOW }));
+    const html = renderToStaticMarkup(createElement(PulseBody, { locale, t, data: data(null), releaseId: publication.version, now: NOW }));
     const aside = panel(html, t.pulse.onThisDay);
     expect(aside).toContain(t.pulse.milestoneHistoryUnavailable);
     expect(aside).not.toContain(t.pulse.noMilestonesToday);
@@ -90,7 +91,7 @@ for (const locale of ["en", "ja"] as const satisfies readonly Locale[]) {
 
   test(`${locale} renders a verified day with no milestones`, async () => {
     const t = await getDictionary(locale);
-    const html = renderToStaticMarkup(createElement(PulseBody, { locale, t, data: data(VERIFIED_AT), now: NOW }));
+    const html = renderToStaticMarkup(createElement(PulseBody, { locale, t, data: data(VERIFIED_AT), releaseId: publication.version, now: NOW }));
     const aside = panel(html, t.pulse.onThisDay);
     expect(aside).toContain(t.pulse.noMilestonesToday);
     expect(aside).not.toContain(t.pulse.milestoneHistoryUnavailable);

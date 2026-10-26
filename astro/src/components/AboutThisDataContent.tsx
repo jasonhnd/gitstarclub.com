@@ -11,6 +11,8 @@ export interface AboutThisDataProps {
   meta: Meta | null;
   releaseId: ViewsPointer["version"] | null;
   layer: DataLayer;
+  /** Other data layers used on this page, sharing the same publication. */
+  additionalLayers?: DataLayer[];
   pageTitle: string;
   canonicalUrl: string;
   /** Supply only when the page actually uses this published daily history. */
@@ -25,7 +27,7 @@ const methods = {
 const linkClass = "font-semibold text-readable-gold underline underline-offset-4 hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary";
 
 /** Static content shared by Astro and the isolated acceptance render. No React hydration. */
-export function AboutThisDataContent({ locale, dictionary, meta, releaseId, layer, pageTitle, canonicalUrl, historyCoverage }: AboutThisDataProps) {
+export function AboutThisDataContent({ locale, dictionary, meta, releaseId, layer, additionalLayers = [], pageTitle, canonicalUrl, historyCoverage }: AboutThisDataProps) {
   const t = dictionary.aboutData;
   const language = toBcp47Locale(locale);
   const formatDate = (value: string) => new Intl.DateTimeFormat(language, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
@@ -33,13 +35,13 @@ export function AboutThisDataContent({ locale, dictionary, meta, releaseId, laye
   const date = timestamp ? new Date(timestamp).toISOString().slice(0, 10) : null;
   const count = meta?.active_repo_count;
   const coverage = count === undefined ? t.coverageUnknown : t.coverageWithCount.replace("{count}", new Intl.NumberFormat(language).format(count));
-  const method = methods[layer];
+  const layers = [...new Set([layer, ...additionalLayers])];
   const citation = t.citation.replace(/\{(title|url|date|release)\}/g, (_match, key: string) => ({ title: pageTitle, url: canonicalUrl, date: date ?? t.unavailable, release: releaseId ?? t.unavailable })[key]!);
 
   const rows = [
-    [t.dataAsOf, <><span>{date ? <time dateTime={date}>{formatDate(date)}</time> : t.unavailable} ({t[layer]})</span>{historyCoverage && <span> · {t.dailyHistory.replace("{start}", formatDate(historyCoverage.start)).replace("{end}", formatDate(historyCoverage.end_inclusive))}</span>}</>],
+    [t.dataAsOf, <><span>{date ? <time dateTime={date}>{formatDate(date)}</time> : t.unavailable} ({layers.map((value) => t[value]).join("; ")})</span>{historyCoverage && <span> · {t.dailyHistory.replace("{start}", formatDate(historyCoverage.start)).replace("{end}", formatDate(historyCoverage.end_inclusive))}</span>}</>],
     [t.coverage, coverage],
-    [t.method, <>{t[method.text]} {" "}<a className={linkClass} href={`${localizedPath(locale, "/about")}#${method.anchor}`}>{t.methodLink}<span aria-hidden="true"> →</span></a></>],
+    [t.method, <>{layers.map((value) => { const method = methods[value]; return <span key={value} className="block">{t[method.text]} {" "}<a className={linkClass} href={`${localizedPath(locale, "/about")}#${method.anchor}`}>{t.methodLink}<span aria-hidden="true"> →</span></a></span>; })}</>],
     [t.citeAs, <><div className="flex flex-wrap items-start gap-3"><span data-citation tabIndex={0} className="min-w-0 flex-1 basis-64 select-text rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{citation}</span><button type="button" hidden data-copy data-copied={t.copied} data-unavailable={t.copyUnavailable} className="min-h-11 rounded-full border border-outline-variant bg-surface-container-high px-4 py-2 font-semibold text-on-surface hover:bg-primary-container hover:text-on-primary-container focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary">{t.copy}</button></div><span data-copy-status role="status" className="sr-only" /></>],
     [t.release, releaseId ? <a className={`${linkClass} font-mono`} href={`/releases/${encodeURIComponent(releaseId)}`}>{releaseId}<span aria-hidden="true"> →</span></a> : t.unavailable],
   ] as const;
