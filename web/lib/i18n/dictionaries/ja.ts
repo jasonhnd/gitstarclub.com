@@ -402,6 +402,8 @@ const ja: Dict = {
     subtitle: "GitStarClub の事前計算ランキングから、利用可能な最新の週次・月次・年次上昇を示します。",
     surging: "月次の上位リポジトリ",
     onThisDay: "この日の節目",
+    milestoneHistoryUnavailable: "節目の履歴はまだ利用できません",
+    noMilestonesToday: "今日は記録された節目がありません",
     crossed: "突破",
     open: "開く",
     fullBoard: "全順位",

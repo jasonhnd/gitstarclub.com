@@ -42,6 +42,8 @@ describe("locale dictionary contract", () => {
       expect(dictionary.rankings.noMovement, `${locale}.rankings.noMovement`).not.toBe(en.rankings.noMovement);
       expect(dictionary.a11y.rankingPeriod, `${locale}.a11y.rankingPeriod`).not.toBe(en.a11y.rankingPeriod);
       expect(dictionary.pulse.fullBoard, `${locale}.pulse.fullBoard`).not.toBe(en.pulse.fullBoard);
+      expect(dictionary.pulse.milestoneHistoryUnavailable, `${locale}.pulse.milestoneHistoryUnavailable`).not.toBe(en.pulse.milestoneHistoryUnavailable);
+      expect(dictionary.pulse.noMilestonesToday, `${locale}.pulse.noMilestonesToday`).not.toBe(en.pulse.noMilestonesToday);
     }
   });
 });
