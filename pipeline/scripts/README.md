@@ -8,7 +8,12 @@ Parquet, aggregate backup checkpoints, and retained GitHub node IDs, then
 seals both local bootstrap phases and a JSON report. It refuses missing
 identities and any monthly curve mismatch. See the
 [input layout and exact Mac commands](../../docs/analysis/PRODUCTION-REPAIR-BUILDER.md).
-The comparison command and all publication work are separate cards.
+Issue #787 adds `web/scripts/prod-repair-compare.ts`: it verifies both local
+phases, recomputes in memory, and reports every monthly repository rank,
+organization monthly curve, and month heatmap difference. Any monthly mismatch
+exits nonzero. W23-W39 survivor-sum and mixed week ranks are informational.
+The same runbook includes the exact offline comparison command for the Mac.
+All publication work remains separate.
 
 ## Aggregate gap inputs
 

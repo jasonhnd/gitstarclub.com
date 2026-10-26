@@ -4,13 +4,14 @@ status: active
 last_reviewed: 2026-10-26
 source_of_truth_for:
   - issue 786 offline option B repair builder
+  - issue 787 offline frozen-generation comparison
 ---
 
 # Offline production repair builder
 
-Issue #786 implements tasks 1 and 2 of #778. The comparison command, Mac
-rehearsal, sealing today's production canonical backup, and all publication
-are separate cards. This tool reads local files and writes a new local
+Issue #786 implements tasks 1 and 2 of #778. Issue #787 adds the offline
+comparison in task 3. Mac rehearsal, sealing today's production canonical
+backup, and all publication are separate cards. These tools read local files and write new local
 directory. It does not read environment files, fetch data, use credentials,
 invoke a platform CLI, or write any remote object.
 
@@ -117,3 +118,80 @@ local report; it is not staged in either publication phase.
 A retained legacy-format GitHub node ID is allowed when copied from the
 authoritative whitelist or REST response. The tool has no identity encoding
 fallback and does not use the older rehearsal metadata builder.
+
+## Offline comparison with the frozen generation
+
+The comparison consumes the builder's output above. It verifies both sealed
+phase manifests and every object's bytes and SHA-256 checksum before reading
+the canonical shards. It uses the existing `buildModel` and `computeAllViews`
+functions to recompute views entirely in memory. Its reference is the sealed
+`base` phase: the builder's byte-for-byte copy of the frozen generation
+`refresh-2026-09-13T06-00-16-398Z`. There is no metadata refresh, fold, default
+storage adapter, remote fetch, or publication step.
+
+On the Mac, from the repository root after the builder succeeds, run:
+
+```bash
+export REPAIR="$PWD/.kanban-work/786-real"
+bun --no-env-file web/scripts/prod-repair-compare.ts \
+  --built "$REPAIR/repaired" \
+  --generation bootstrap-prod-repair-786 \
+  --out "$REPAIR/comparison-787.json"
+```
+
+The report path must be new, its parent must exist, and it must be outside the
+built input directory. The command never overwrites an existing report. Exit
+codes are `0` for monthly equality, `1` for monthly differences (the complete
+report is still written), and `2` for invalid arguments, incomplete or altered
+sealed inputs, malformed input, or an I/O failure. Exit `2` is not a comparison
+result. Fix the input or path problem before interpreting any prior report.
+
+Inspect all differences even when the command exits `1`:
+
+```bash
+jq '{generation, phase_manifest_sha256, recompute, monthly_matches_frozen,
+     monthly_difference_count, empty_monthly_families}' "$REPAIR/comparison-787.json"
+jq '.monthly | to_entries[] | {family: .key, files: .value.files,
+     matched_files: .value.matched_files, differences: .value.differences}' \
+  "$REPAIR/comparison-787.json"
+jq '.weekly | {survivor_sum_files, mixed_files, missing_files}' "$REPAIR/comparison-787.json"
+jq '.weekly.files[]' "$REPAIR/comparison-787.json"
+```
+
+The monthly gate covers the union of frozen and recomputed file inventories:
+
+- Every `rank/month/<month>/repo/*.json`, including flow, stock, growth, and
+  newcomers. Rank order, IDs, values, previous ranks, and metadata must match.
+- Every `entity/org/<login>.json` monthly curve, including period, flow, and
+  stock for every point. Recent daily points, aggregate provenance, membership,
+  and other entity metadata are outside this monthly comparison.
+- Every `heatmap/month/<month>.json`, including dates, values, cell order, and
+  scope/period metadata.
+
+Only `meta.generated_at` in rank and heatmap objects is ignored. Numbers have
+zero tolerance; a difference of one fails. Object key order is immaterial.
+Array order is significant. Missing and additional files or points fail.
+An entirely absent comparison family cannot pass. No differences are sampled
+or truncated, including when arrays differ in length. Each record identifies
+the file, a JSON Pointer (a slash-separated location inside the JSON), the
+kind of difference, and each available side's value.
+
+The four approved repository drops are **not filtered out** of the reference.
+Their effects on monthly rank order, previous ranks, or organization curves
+remain visible and cause exit `1`. This command must not turn a changed
+monthly result into a pass by silently changing the comparison's membership.
+The real-input result and any resolution belong to the later Mac cards;
+this card runs only small synthetic fixtures.
+
+The report lists all 68 week rank paths for W23 through W39: repository and
+organization dimensions, each with flow and stock. It classifies the actual
+recomputed output as `survivor_sum`, `mixed`, `existing_history`, `stock`,
+`empty`, or `missing`. A flow file is `survivor_sum` only when real recompute
+emits surviving-star provenance without mixed scope. A file whose top-ranked
+rows combine imported and existing history is `mixed`. Classification uses
+the emitted file, not just the week number. Stock files are never called
+survivor sums; imported repository observations have unknown stock and are
+omitted from those stock ranks. Weekly presence and every weekly difference
+against the frozen reference are recorded separately and are informational:
+they cannot fail or override the monthly gate. W22 and W40 are outside this
+complete-week report.
