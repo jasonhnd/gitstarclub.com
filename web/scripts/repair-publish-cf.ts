@@ -17,6 +17,13 @@ export type CfRetryOptions = {
   log?: (line: string) => void;
 };
 
+/** Supplied only by the owner of a mutable control object. The shared retry
+ * boundary still requires exact prior or intended bytes at the exact key. */
+export type CfPutReplacementRetry = {
+  expectedPrior: Buffer;
+  authorize: (state: "prior" | "intended", now: number) => boolean;
+};
+
 export function repairConcurrency(value = 4): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > 10) {
     throw new Error("Concurrency must be an integer from 1 to 10");
@@ -172,7 +179,8 @@ async function cfObjectAtKey(runner: CfRunner, key: string, bucket: string, retr
 }
 
 /** One retry boundary for every publisher caller, including injected runners. */
-export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryOptions = {}): Promise<Awaited<ReturnType<CfRunner>>> {
+export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryOptions = {},
+  replacement?: CfPutReplacementRetry): Promise<Awaited<ReturnType<CfRunner>>> {
   const { sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)), random = Math.random,
     now = Date.now, log = console.error } = retry;
   const operation = args[2];
@@ -207,7 +215,19 @@ export async function cfResult(runner: CfRunner, args: string[], retry: CfRetryO
     if (operation === "put") {
       if (!body || bucketAt < 0 || !args[bucketAt + 1]) throw new Error(`Cannot safely retry cf put: ${key}`);
       const bucket = args[bucketAt + 1];
-      if (recheckEtag) {
+      if (replacement) {
+        const present = await cfObjectAtKey(runner, key, bucket, retry);
+        if (!present) throw new Error(`Owned replacement key disappeared: ${key}`);
+        const actual = await cfBytes(runner, ["r2", "objects", "get", key, "--bucket-name", bucket], retry);
+        const current = await readFile(args[fileAt + 1]);
+        if (!current.equals(body)) throw new Error(`Local put bytes changed during retry: ${key}`);
+        if (actual.equals(body) && replacement.authorize("intended", now())) {
+          return { code: 0, stdout: Buffer.alloc(0), stderr: "", alreadyPresent: true };
+        }
+        if (!actual.equals(replacement.expectedPrior) || !replacement.authorize("prior", now())) {
+          throw new Error(`Existing object differs: ${key}`);
+        }
+      } else if (recheckEtag) {
         const present = await cfObjectAtKey(runner, key, bucket, retry);
         if (present) {
           if (!matchesListedObject(present, body)) throw new Error(`Existing object differs: ${key}`);

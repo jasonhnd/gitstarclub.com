@@ -1007,13 +1007,30 @@ merely mentions 10500 fails immediately. HTTP 400 (Bad Request), 403
 (Forbidden), and all other HTTP errors also fail immediately.
 
 After an authentication or transient wait, a put rechecks the exact key before resending.
-For 500/10500, matching size and MD5 etag mean it is already done; the other
-retry paths compare the existing object's size and SHA-256 with the source bytes.
-Different content refuses the write, and
-proven absence allows the same put again. An ambiguous full listing or failed
-read also refuses the retry. This check applies to lease and pointer writes as
-well, so a rate-limited attempt to replace an existing control object can fail
-closed on its old bytes. The single-writer window remains required. Recovery
+For ordinary puts, 500/10500 uses matching size and MD5 etag as proof that the
+put completed; the other retry paths compare the existing object's size and
+SHA-256 with the source bytes. Different content refuses the write, and proven
+absence allows the same put again. An ambiguous full listing or failed read
+also refuses the retry. Immutable generation objects and `bootstrap/latest.json`
+keep this rule. Lease acquisition has no replacement retry permission.
+
+Only an owned renewal or release of `ops/workflows/active.json` supplies an
+expected prior lease to the retry boundary. After each ambiguous put response,
+it lists and reads that exact key. Exact intended bytes count as applied only
+while the expected prior running lease is still unexpired and has the same
+run ID and fencing token. For renewal, the intended lease must also be running
+and unexpired. For release, the intended status is `published` or `failed`;
+its `expires_at` equals `acquired_at` by design, so the expiry check applies to
+the prior active lease. A resend requires the exact prior bytes, a running
+status, the same owner and fence, and an unexpired prior lease. Missing,
+changed, malformed, expired, or unreadable state refuses the resend. The local
+put file must still match its original byte snapshot, and the final SHA-256
+readback remains required.
+
+These checks cannot make cf's put conditional. Another process can change the
+lease between the exact-key read and a resend, just as it can between the
+initial ownership check and put. The human single-writer maintenance window
+remains required. Recovery
 and staging drain in-flight uploads before reporting a transfer failure. A
 matching object discovered after a 429, 500/10500, 502, 503, 504, or 401 wait counts as skipped (already present),
 not created. Generation verification waits for both base and canonical phases

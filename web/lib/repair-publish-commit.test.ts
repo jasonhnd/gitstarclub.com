@@ -24,6 +24,12 @@ function boxedError(key: string, status = 404, fallback = false, colour = false)
   return `\n${red("┌")} ${red(bold("APIError"))}\n${`${message}\n${muted(http)}`.split("\n").map((line) => `${red("│")} ${line}`).join("\n")}\n${red("└")}\n`;
 }
 
+function retryError(status: number) {
+  const reason = ({ 401: "Unauthorized", 429: "Too Many Requests", 500: "Internal Server Error",
+    502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout" })[status];
+  return `\n┌ APIError\n│ [${status === 500 ? 10500 : 10000}] temporary error\n│ ${status} ${reason} · HTTP /objects/active.json\n└\n`;
+}
+
 function fixture() {
   const workDir = mkdtempSync(join(tmpdir(), "repair-824b-")); scratch.push(workDir);
   const objects = new Map<string, Buffer>();
@@ -112,6 +118,189 @@ function fixture() {
 }
 
 describe("repair publication with fake cf only", () => {
+  test("acquisition cannot retry over a different prior lease", async () => {
+    const h = fixture(); h.objects.set(ACTIVE, encode({ run_id: "previous", status: "failed", fencing_token: 4,
+      expires_at: new Date(NOW - 1).toISOString() }));
+    const previous = h.objects.get(ACTIVE)!;
+    let puts = 0;
+    const runCf: CfRunner = (args, child) => {
+      if (args[0] === "auth") return Promise.resolve({ code: 0, stdout: '{"authenticated":true}', stderr: "" });
+      if (args[2] === "put" && args[3] === ACTIVE && ++puts === 1) {
+        return Promise.resolve({ code: 1, stdout: "", stderr: retryError(401) });
+      }
+      return h.options.runCf(args, child);
+    };
+    await expect(new RepairPublication({ ...h.options, runCf,
+      retry: { sleep: async () => {}, random: () => 0, log: () => {} } }).acquire())
+      .rejects.toThrow("Existing object differs");
+    expect(puts).toBe(1);
+    expect(h.objects.get(ACTIVE)).toEqual(previous);
+  });
+
+  for (const status of [401, 429, 500, 502, 503, 504]) for (const applied of [false, true]) {
+    test(`owned renewal retries ${status} with ${applied ? "new" : "old"} remote bytes`, async () => {
+      const h = fixture(); let fail = false, puts = 0, refreshes = 0;
+      const runCf: CfRunner = async (args, child) => {
+        if (args[0] === "auth") { refreshes++; return { code: 0, stdout: '{"authenticated":true}', stderr: "" }; }
+        if (args[2] === "put" && args[3] === ACTIVE) {
+          puts++;
+          if (fail) {
+            fail = false;
+            if (applied) await h.options.runCf(args, child);
+            return { code: 1, stdout: "", stderr: retryError(status) };
+          }
+        }
+        return h.options.runCf(args, child);
+      };
+      const p = new RepairPublication({ ...h.options, runCf,
+        retry: { sleep: async () => {}, random: () => 0, log: () => {} } });
+      await p.acquire(); const before = h.objects.get(ACTIVE)!;
+      h.advance(31_000); fail = true;
+      await p.store.read(`${BASE}meta.json`);
+      const after = JSON.parse(h.objects.get(ACTIVE)!.toString());
+      expect(after.run_id).toBe(JSON.parse(before.toString()).run_id);
+      expect(after.fencing_token).toBe(JSON.parse(before.toString()).fencing_token);
+      expect(Date.parse(after.expires_at)).toBe(NOW + 631_000);
+      expect(puts).toBe(applied ? 2 : 3); // Acquisition, first renewal, optional resend.
+      expect(refreshes).toBe(status === 401 ? 1 : 0);
+    });
+  }
+
+  for (const status of [401, 500]) for (const applied of [false, true]) {
+    test(`owned release retries ${status} with ${applied ? "released" : "running"} remote bytes`, async () => {
+      const h = fixture(); let fail = false, puts = 0;
+      const runCf: CfRunner = async (args, child) => {
+        if (args[0] === "auth") return { code: 0, stdout: '{"authenticated":true}', stderr: "" };
+        if (args[2] === "put" && args[3] === ACTIVE) {
+          puts++;
+          if (fail) {
+            fail = false;
+            if (applied) await h.options.runCf(args, child);
+            return { code: 1, stdout: "", stderr: retryError(status) };
+          }
+        }
+        return h.options.runCf(args, child);
+      };
+      const p = new RepairPublication({ ...h.options, runCf,
+        retry: { sleep: async () => {}, random: () => 0, log: () => {} } });
+      await p.acquire(); fail = true;
+      await p.release("failed");
+      const released = JSON.parse(h.objects.get(ACTIVE)!.toString());
+      expect(released.status).toBe("failed");
+      expect(released.expires_at).toBe(released.acquired_at);
+      expect(puts).toBe(applied ? 2 : 3);
+    });
+  }
+
+  for (const change of ["owner", "fence", "expired", "status", "same-owner-new-expiry", "invalid", "list-fails", "get-fails", "local-bytes", "local-bytes-applied"]) {
+    test(`owned renewal refuses ${change} after ambiguous put without resend`, async () => {
+      const h = fixture(); let fail = false, puts = 0, file = "", reads = 0;
+      const runCf: CfRunner = async (args, child) => {
+        if (args[2] === "put" && args[3] === ACTIVE) {
+          puts++;
+          if (fail) { fail = false; file = args[args.indexOf("--file") + 1];
+            if (change === "local-bytes-applied") await h.options.runCf(args, child);
+            return { code: 1, stdout: "", stderr: retryError(401) }; }
+        }
+        if (file && args[2] === "list" && args[args.indexOf("--prefix") + 1] === ACTIVE && change === "list-fails") {
+          return { code: 1, stdout: "", stderr: "listing failed" };
+        }
+        if (file && args[2] === "get" && args[3] === ACTIVE && change === "get-fails") {
+          return { code: 1, stdout: "", stderr: "read failed" };
+        }
+        if (args[0] === "auth") return { code: 0, stdout: '{"authenticated":true}', stderr: "" };
+        if (file && args[2] === "get" && args[3] === ACTIVE) reads++;
+        return h.options.runCf(args, child);
+      };
+      const p = new RepairPublication({ ...h.options, runCf,
+        retry: { sleep: async () => {
+          const old = JSON.parse(h.objects.get(ACTIVE)!.toString());
+          if (change === "owner") old.run_id = "successor";
+          if (change === "fence") old.fencing_token++;
+          if (change === "expired") old.expires_at = new Date(NOW - 1).toISOString();
+          if (change === "status") old.status = "failed";
+          if (change === "same-owner-new-expiry") old.expires_at = new Date(NOW + 700_000).toISOString();
+          if (change === "invalid") h.objects.set(ACTIVE, Buffer.from("not JSON"));
+          else h.objects.set(ACTIVE, encode(old));
+          if (change === "local-bytes" || change === "local-bytes-applied") writeFileSync(file, "changed locally");
+        }, random: () => 0, log: () => {} } });
+      await p.acquire(); h.advance(31_000); fail = true;
+      await expect(p.store.read(`${BASE}meta.json`)).rejects.toThrow();
+      expect(puts).toBe(2);
+      if (change !== "list-fails" && change !== "get-fails") expect(reads).toBeGreaterThan(0);
+    });
+  }
+
+  for (const operation of ["renew", "release"] as const) {
+    test(`${operation} refuses an already-applied lease after its prior active lease expires`, async () => {
+      const h = fixture(); let fail = false, puts = 0;
+      const runCf: CfRunner = async (args, child) => {
+        if (args[0] === "auth") return { code: 0, stdout: '{"authenticated":true}', stderr: "" };
+        if (args[2] === "put" && args[3] === ACTIVE) {
+          puts++;
+          if (fail) {
+            fail = false;
+            await h.options.runCf(args, child);
+            return { code: 1, stdout: "", stderr: retryError(401) };
+          }
+        }
+        return h.options.runCf(args, child);
+      };
+      const p = new RepairPublication({ ...h.options, runCf,
+        retry: { sleep: async () => { h.advance(601_000); }, random: () => 0, log: () => {} } });
+      await p.acquire(); fail = true;
+      if (operation === "renew") {
+        h.advance(31_000);
+        await expect(p.store.read(`${BASE}meta.json`)).rejects.toThrow("Existing object differs");
+      } else await expect(p.release("failed")).rejects.toThrow("Existing object differs");
+      expect(puts).toBe(2);
+    });
+  }
+
+  for (const change of ["owner", "fence", "expired", "status", "same-owner-new-expiry", "invalid"]) {
+    test(`owned release refuses ${change} after ambiguous put`, async () => {
+      const h = fixture(); let fail = false, puts = 0;
+      const runCf: CfRunner = async (args, child) => {
+        if (args[0] === "auth") return { code: 0, stdout: '{"authenticated":true}', stderr: "" };
+        if (args[2] === "put" && args[3] === ACTIVE) {
+          puts++;
+          if (fail) { fail = false; return { code: 1, stdout: "", stderr: retryError(401) }; }
+        }
+        return h.options.runCf(args, child);
+      };
+      const p = new RepairPublication({ ...h.options, runCf,
+        retry: { sleep: async () => {
+          const old = JSON.parse(h.objects.get(ACTIVE)!.toString());
+          if (change === "owner") old.run_id = "successor";
+          if (change === "fence") old.fencing_token++;
+          if (change === "expired") old.expires_at = new Date(NOW - 1).toISOString();
+          if (change === "status") old.status = "failed";
+          if (change === "same-owner-new-expiry") old.expires_at = new Date(NOW + 700_000).toISOString();
+          h.objects.set(ACTIVE, change === "invalid" ? Buffer.from("not JSON") : encode(old));
+        }, random: () => 0, log: () => {} } });
+      await p.acquire(); fail = true;
+      await expect(p.release("failed")).rejects.toThrow();
+      expect(puts).toBe(2);
+    });
+  }
+
+  test("simultaneous heartbeats share one renewal promise", async () => {
+    const h = fixture(), p = h.publication(); await p.acquire(); h.advance(31_000);
+    const started = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+    h.hook(async (args) => {
+      if (args[2] === "put" && args[3] === ACTIVE) { started.resolve(); await resume.promise; }
+    });
+    const first = p.store.read(`${BASE}meta.json`);
+    const second = p.store.read(`${BASE}meta.json`);
+    try {
+      await started.promise;
+      expect(h.calls.filter((args) => args[2] === "put" && args[3] === ACTIVE)).toHaveLength(2);
+    } finally { resume.resolve(); }
+    await Promise.all([first, second]);
+    expect(h.writes.filter(({ key }) => key === ACTIVE)).toHaveLength(2);
+    await p.release("failed");
+  });
+
   test("a publication can reacquire and heartbeat after releasing its previous lease", async () => {
     const h = fixture(), p = h.publication();
     await p.acquire(); await p.releaseIfOwned("failed");

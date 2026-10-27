@@ -16,7 +16,7 @@ import { BootstrapPublicationPointer } from "../lib/contracts/workflow";
 
 /** The injected runner must pass env to its child process unchanged. */
 import { cfResult, limitCfConcurrency, listCfPrefix, matchesListedObject, repairConcurrency,
-  type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
+  type CfPutReplacementRetry, type CfRetryOptions, type CfRunner } from "./repair-publish-cf";
 export type { CfRunner } from "./repair-publish-cf";
 export const RECOVERY_BASE_PREFIX = "views/refresh-2026-09-13T06-00-16-398Z/";
 export const RECOVERY_CANONICAL_KEYS = Object.freeze(["canonical/v2/meta.json",
@@ -73,11 +73,12 @@ export class RepairPublication {
     this.runner = limitCfConcurrency(options.runCf, this.concurrency);
   }
 
-  private run(args: string[]) {
-    return cfResult(this.runner, ["r2", "objects", ...args, "--bucket-name", this.options.bucket], this.options.retry);
+  private run(args: string[], replacement?: CfPutReplacementRetry) {
+    const retry = replacement ? { ...this.options.retry, now: this.now } : this.options.retry;
+    return cfResult(this.runner, ["r2", "objects", ...args, "--bucket-name", this.options.bucket], retry, replacement);
   }
 
-  private async cfResult(args: string[]) {
+  private async cfResult(args: string[], replacement?: CfPutReplacementRetry) {
     let heartbeatError: unknown;
     let pending: Promise<void> | undefined;
     const leaseCommand = args[0] === "list"
@@ -87,7 +88,7 @@ export class RepairPublication {
       pending = this.heartbeat().catch((error) => { heartbeatError = error; });
     }, 30_000);
     try {
-      const result = await this.run(args);
+      const result = await this.run(args, replacement);
       await pending;
       if (heartbeatError) throw heartbeatError;
       return result;
@@ -151,13 +152,14 @@ export class RepairPublication {
     return body;
   }
 
-  private async rawPut(path: string, body: Buffer): Promise<void> {
+  private async rawPut(path: string, body: Buffer, replacement?: CfPutReplacementRetry): Promise<void> {
+    if (replacement && path !== ACTIVE_WORKFLOW_PATH) throw new Error("Only the workflow lease may use replacement retry");
     await mkdir(this.options.workDir, { recursive: true });
     const scratch = await mkdtemp(join(this.options.workDir, "repair-put-"));
     try {
       const file = join(scratch, "body");
       await writeFile(file, body, { flag: "wx" });
-      await this.cf(["put", path, "--file", file, "--content-type", "application/json"]);
+      await this.cfResult(["put", path, "--file", file, "--content-type", "application/json"], replacement);
       const actual = await this.rawRead(path);
       if (!actual || sha256Bytes(actual) !== sha256Bytes(body)) throw new Error(`SHA-256 readback mismatch: ${path}`);
     } finally { await rm(scratch, { recursive: true, force: true }); }
@@ -224,6 +226,23 @@ export class RepairPublication {
     return !!current && !!this.lease && current.run_id === this.lease.run_id && current.fencing_token === this.lease.fencing_token && current.status === "running";
   }
 
+  private leaseReplacement(expected: NonNullable<ReturnType<typeof parseBootstrapLease>>,
+    intended: NonNullable<ReturnType<typeof parseBootstrapLease>>, operation: "renew" | "release"): CfPutReplacementRetry {
+    if (!this.lease || expected.status !== "running" || expected.run_id !== this.lease.run_id ||
+        expected.fencing_token !== this.lease.fencing_token ||
+        intended.run_id !== expected.run_id || intended.fencing_token !== expected.fencing_token ||
+        (operation === "renew" && (intended.status !== "running" || intended.acquired_at !== expected.acquired_at ||
+          Date.parse(intended.expires_at) <= Date.parse(expected.expires_at))) ||
+        (operation === "release" && ((intended.status !== "published" && intended.status !== "failed") ||
+          intended.expires_at !== intended.acquired_at))) {
+      throw new Error("Invalid owned workflow lease replacement");
+    }
+    return { expectedPrior: encode(expected), authorize: (state, now) => {
+      if (Date.parse(expected.expires_at) <= now) return false;
+      return state === "prior" || operation === "release" || Date.parse(intended.expires_at) > now;
+    } };
+  }
+
   async acquire(): Promise<void> {
     if (this.lease) throw new Error("Publication already holds a lease");
     this.releasing = false;
@@ -260,7 +279,7 @@ export class RepairPublication {
       await this.assertOwned();
       const renewed = { ...this.lease!, expires_at: new Date(this.now() + TTL).toISOString() };
       await this.assertOwned();
-      await this.rawPut(ACTIVE_WORKFLOW_PATH, encode(renewed));
+      await this.rawPut(ACTIVE_WORKFLOW_PATH, encode(renewed), this.leaseReplacement(this.lease!, renewed, "renew"));
       this.lease = renewed;
       this.lastRenew = this.now();
     })().finally(() => { this.renewal = undefined; });
@@ -294,7 +313,7 @@ export class RepairPublication {
     await this.assertOwned();
     // Disable heartbeat while marking the lease complete.
     this.lastRenew = this.now();
-    await this.rawPut(ACTIVE_WORKFLOW_PATH, encode(released));
+    await this.rawPut(ACTIVE_WORKFLOW_PATH, encode(released), this.leaseReplacement(this.lease!, released, "release"));
     this.lease = null;
   }
 
