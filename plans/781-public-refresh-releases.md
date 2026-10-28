@@ -63,7 +63,7 @@ storage; no owner environment files or live-test opt-ins were present.
 | Runtime version and CI gate assertions | PASS. No workflow or deployment configuration changed. |
 | `cd pipeline && bun run test -- --timeout 30000` | PASS: 205 tests across 11 files. |
 | Web local production and preview builds, each followed by matching host validation | PASS: 234 core routes and 467 artifacts per mode, local fixtures only. |
-| `bun run lint:docs` | BLOCKED by four existing unresolved references to `scripts/perf-local.ts` and `scripts/perf-metrics.ts` in `plans/760-astro-preview-deploy-guard.md` and `plans/astro-accept-1-baseline.md`. Those files are unchanged. |
+| `bun run lint:docs` | BLOCKED at the recorded time by four existing unresolved references to [performance runner](../astro/scripts/perf-local.ts) and [performance metrics](../astro/scripts/perf-metrics.ts) in `plans/760-astro-preview-deploy-guard.md` and `plans/astro-accept-1-baseline.md`. Those files were unchanged by that card. |
 | Pipeline dependency audit | BLOCKED by existing high-severity advisories for transitive `undici@6.28.1` and `zod@4.1.11`. No dependency or lockfile changes belong to this issue. |
 
 Publication's first invocation now uses 60 storage operations instead of 23;

@@ -22,6 +22,6 @@ full pipeline suite, and full web coverage suite. Deliver one small commit.
 - Full web coverage suite (`bun run test:cov`, placeholder data origin,
   live SEO opt-in empty): 2,402 passed, 49 skipped, 0 failed; line coverage
   90.47%, function coverage 91.05%.
-- `bun run lint:docs`: blocked by eight existing unresolved references to
-  `scripts/perf-local.ts` and `scripts/perf-metrics.ts` in unchanged plans.
+- `bun run lint:docs`: blocked at the recorded time by eight existing unresolved references to
+  [performance runner](../astro/scripts/perf-local.ts) and [performance metrics](../astro/scripts/perf-metrics.ts) in unchanged plans.
 - `git diff --check`: passed.
