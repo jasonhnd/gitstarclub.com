@@ -51,7 +51,7 @@ function snapshot(onThisDay: string | null): HotSnapshot {
 }
 
 function data(onThisDay: string | null): PulseData {
-  return { meta, snap: snapshot(onThisDay), lookup: {}, availablePeriods, activeWeekRank: null, activeMonthRank: null };
+  return { meta, snap: snapshot(onThisDay), lookup: {}, availablePeriods, activeWeekRank: null, activeMonthRank: null, currentMonth: null, monthHeat: null };
 }
 
 function panel(html: string, heading: string): string {
