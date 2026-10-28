@@ -35,7 +35,7 @@ Implementation commit: `e9c2bc3`.
 - `cd web && BLOB_BASE_URL=https://blob.example.com SEO_LIVE_BASE= bun run test:cov`: 2,172 passed, 49 skipped, zero failed; line coverage 90.05%, function coverage 90.70%.
 - `node scripts/assert-cf-ci-gates.mjs`: passed; source preview and production contracts remain unchanged.
 - Static checks used checksum-verified Node v24.20.0 and Bun 1.4.2 in a clean environment without live-service opt-ins. The Astro tests ran with Bun 1.4.2 and card-local `KANBAN_TMP`.
-- The full static job is not green: existing high-severity `undici` and `zod` dependency advisories fail both dependency audits. Existing unresolved references to `scripts/perf-local.ts` and `scripts/perf-metrics.ts` in `plans/astro-accept-1-baseline.md:24` fail documentation lint. Those files and dependency pins are unchanged by this card.
+- At the recorded time, the full static job was not green: existing high-severity `undici` and `zod` dependency advisories failed both dependency audits. Existing unresolved references to [performance runner](../astro/scripts/perf-local.ts) and [performance metrics](../astro/scripts/perf-metrics.ts) in `plans/astro-accept-1-baseline.md:24` failed documentation lint. Those files and dependency pins were unchanged by that card.
 - Local builds were not run because this card forbids platform CLI calls. No deployment, platform CLI, or remote schedule mutation ran.
 - GitHub CLI authentication is unavailable, so this card could not open its pull request against `pre`. The current branch remains `ib/gsc-760`.
 
