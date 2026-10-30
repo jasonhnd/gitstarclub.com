@@ -26,6 +26,7 @@ const es: Dict = {
     unavailable: "No disponible",
   },
   common: {
+    dataUpdatesStopped: "Las actualizaciones de datos se han detenido.",
     starHistoryNote: "Las cifras diarias y semanales del 30 de mayo al 30 de septiembre de 2026 proceden del resumen del historial de estrellas de GitHub y cuentan las que seguían presentes al recopilar los datos. Los días siguen aproximadamente UTC, con posibles diferencias de unas horas.",
     starHistoryMixedNote: "Esta clasificación semanal combina observaciones existentes con el resumen del historial de estrellas de GitHub del 30 de mayo al 30 de septiembre de 2026. Solo las cifras del resumen cuentan las estrellas que seguían presentes al recopilar los datos; sus días siguen aproximadamente UTC, con posibles diferencias de unas horas.",
     faqHeading: "Preguntas frecuentes",

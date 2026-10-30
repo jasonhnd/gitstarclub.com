@@ -81,6 +81,9 @@ export function RootShell({
         <a href="#main" className="skip-link">
           {label(dictionary, "a11y.skipToContent")}
         </a>
+        <aside data-update-notice className="bg-primary-container px-4 py-3 text-center text-sm font-semibold text-[#281900]">
+          {label(dictionary, "common.dataUpdatesStopped")}
+        </aside>
         <div className="contents">
           {children}
           <Footer locale={locale} dictionary={dictionary} />

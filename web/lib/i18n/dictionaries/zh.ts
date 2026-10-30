@@ -26,6 +26,7 @@ const zh: Dict = {
     unavailable: "未知",
   },
   common: {
+    dataUpdatesStopped: "数据更新已停止。",
     starHistoryNote: "2026年5月30日至9月30日的每日、每周数据采用 GitHub 对采集时仍然存在的星标所做的历史汇总。日界约为 UTC，可能相差几小时。",
     starHistoryMixedNote: "此每周榜单混合了既有观测值与2026年5月30日至9月30日的 GitHub 星标历史汇总值。只有汇总值统计采集时仍然存在的星标；其日界约为 UTC，可能相差几小时。",
     faqHeading: "常见问题",
