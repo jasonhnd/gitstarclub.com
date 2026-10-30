@@ -4,6 +4,16 @@ A browsable history of GitHub open-source activity. Read what trended in any pas
 
 Unlike GitHub Trending (only today), star-history.com (one repo at a time), or gitstar-ranking.com (only the current totals), gitstarclub is a structured, retrospective chronicle: every closed period is frozen and precise, every current period updates daily.
 
+## Project status
+
+Development stopped on October 30, 2026. The production site, [gitstarclub.com](https://gitstarclub.com), remains available, but no new features are planned.
+
+The outstanding draft pull requests [#852](https://github.com/jasonhnd/gitstarclub.com/pull/852), [#854](https://github.com/jasonhnd/gitstarclub.com/pull/854), [#858](https://github.com/jasonhnd/gitstarclub.com/pull/858), and [#860](https://github.com/jasonhnd/gitstarclub.com/pull/860) were closed without merging.
+
+Ranking data stopped updating on September 13, 2026; see [#543](https://github.com/jasonhnd/gitstarclub.com/issues/543).
+
+To propose resuming development, open an issue in this repository.
+
 ## At a glance
 
 | | |
